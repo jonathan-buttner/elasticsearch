@@ -53,6 +53,7 @@ import org.elasticsearch.xpack.inference.rest.RestGetInferenceModelAction;
 import org.elasticsearch.xpack.inference.rest.RestInferenceAction;
 import org.elasticsearch.xpack.inference.rest.RestPutInferenceModelAction;
 import org.elasticsearch.xpack.inference.services.elser.ElserMlNodeService;
+import org.elasticsearch.xpack.inference.services.openai.embeddings.OpenAiServiceV1;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -121,7 +122,8 @@ public class InferencePlugin extends Plugin implements ActionPlugin, SystemIndex
         IndicesService indicesService
     ) {
         ModelRegistry modelRegistry = new ModelRegistry(client);
-        ServiceRegistry serviceRegistry = new ServiceRegistry(new ElserMlNodeService(client));
+        // TODO we'll need to initialize the crypto and http client probably
+        ServiceRegistry serviceRegistry = new ServiceRegistry(new ElserMlNodeService(client), new OpenAiServiceV1());
         return List.of(modelRegistry, serviceRegistry);
     }
 
