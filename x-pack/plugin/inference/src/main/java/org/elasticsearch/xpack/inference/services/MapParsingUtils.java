@@ -13,6 +13,8 @@ import org.elasticsearch.rest.RestStatus;
 
 import java.util.Map;
 
+import static org.elasticsearch.core.Strings.format;
+
 public class MapParsingUtils {
     /**
      * Remove the object from the map and cast to the expected type.
@@ -66,5 +68,9 @@ public class MapParsingUtils {
 
     public static String missingSettingErrorMsg(String settingName, String scope) {
         return Strings.format("[%s] does not contain the required setting [%s]", scope, settingName);
+    }
+
+    public static String mustBeNonEmptyString(String settingName) {
+        return format("Invalid value empty string. [%s] must be a non-empty string", settingName);
     }
 }
