@@ -21,14 +21,14 @@ import java.io.IOException;
 import java.util.Map;
 import java.util.Objects;
 
-public class OpenAiTaskSettingsV1 implements TaskSettings {
+public class OpenAiEmbeddingsTaskSettings implements TaskSettings {
 
     public static final String NAME = "openai_task_settings";
     public static final String MODEL = "model";
 
     private final String model;
 
-    public static OpenAiTaskSettingsV1 fromMap(Map<String, Object> map) {
+    public static OpenAiEmbeddingsTaskSettings fromMap(Map<String, Object> map) {
         ValidationException validationException = new ValidationException();
 
         String model = MapParsingUtils.removeAsType(map, MODEL, String.class);
@@ -43,14 +43,14 @@ public class OpenAiTaskSettingsV1 implements TaskSettings {
             throw validationException;
         }
 
-        return new OpenAiTaskSettingsV1(model);
+        return new OpenAiEmbeddingsTaskSettings(model);
     }
 
-    public OpenAiTaskSettingsV1(String model) {
+    public OpenAiEmbeddingsTaskSettings(String model) {
         this.model = model;
     }
 
-    public OpenAiTaskSettingsV1(StreamInput in) throws IOException {
+    public OpenAiEmbeddingsTaskSettings(StreamInput in) throws IOException {
         model = in.readString();
     }
 
@@ -90,7 +90,7 @@ public class OpenAiTaskSettingsV1 implements TaskSettings {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        OpenAiTaskSettingsV1 that = (OpenAiTaskSettingsV1) o;
+        OpenAiEmbeddingsTaskSettings that = (OpenAiEmbeddingsTaskSettings) o;
         return model.equals(that.model);
     }
 

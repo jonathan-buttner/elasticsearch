@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-package org.elasticsearch.xpack.inference.services.openai.embeddings;
+package org.elasticsearch.xpack.inference.services.openai;
 
 import org.elasticsearch.ElasticsearchStatusException;
 import org.elasticsearch.action.ActionListener;
@@ -15,16 +15,19 @@ import org.elasticsearch.xpack.inference.TaskType;
 import org.elasticsearch.xpack.inference.results.InferenceResult;
 import org.elasticsearch.xpack.inference.services.InferenceService;
 import org.elasticsearch.xpack.inference.services.MapParsingUtils;
+import org.elasticsearch.xpack.inference.services.openai.embeddings.OpenAiEmbeddingsModel;
+import org.elasticsearch.xpack.inference.services.openai.embeddings.OpenAiEmbeddingsServiceSettings;
+import org.elasticsearch.xpack.inference.services.openai.embeddings.OpenAiEmbeddingsTaskSettings;
 
 import java.util.Map;
 
 import static org.elasticsearch.xpack.inference.services.MapParsingUtils.removeFromMapOrThrowIfNull;
 
-public class OpenAiServiceV1 implements InferenceService {
+public class OpenAiService implements InferenceService {
 
     public static final String NAME = "openai_embeddings";
 
-    public static OpenAiEmbeddingsModelV1 parseConfig(
+    public static OpenAiEmbeddingsModel parseConfig(
         boolean throwOnUnknownFields,
         String modelId,
         TaskType taskType,
@@ -42,21 +45,21 @@ public class OpenAiServiceV1 implements InferenceService {
             throwIfNotEmptyMap(taskSettingsMap);
         }
 
-        return new OpenAiEmbeddingsModelV1(modelId, taskType, NAME, serviceSettings, taskSettings);
+        return new OpenAiEmbeddingsModel(modelId, taskType, NAME, serviceSettings, taskSettings);
     }
 
     // TODO add http client and CryptoService here
     // private final OriginSettingClient client;
 
-    public OpenAiServiceV1() {}
+    public OpenAiService() {}
 
     @Override
-    public OpenAiEmbeddingsModelV1 parseConfigStrict(String modelId, TaskType taskType, Map<String, Object> config) {
+    public OpenAiEmbeddingsModel parseConfigStrict(String modelId, TaskType taskType, Map<String, Object> config) {
         return parseConfig(true, modelId, taskType, config);
     }
 
     @Override
-    public OpenAiEmbeddingsModelV1 parseConfigLenient(String modelId, TaskType taskType, Map<String, Object> config) {
+    public OpenAiEmbeddingsModel parseConfigLenient(String modelId, TaskType taskType, Map<String, Object> config) {
         return parseConfig(false, modelId, taskType, config);
     }
 
@@ -81,6 +84,8 @@ public class OpenAiServiceV1 implements InferenceService {
             return;
         }
 
+        OpenAiEmbeddingsTaskSettings taskSettings = taskSettingsFromMap(taskType, config);
+
         // TODO make http request
         // var request = InferTrainedModelDeploymentAction.Request.forTextInput(
         // modelId,
@@ -95,16 +100,16 @@ public class OpenAiServiceV1 implements InferenceService {
         // }, listener::onFailure));
     }
 
-    private static OpenAiServiceSettingsV1 serviceSettingsFromMap(Map<String, Object> config) {
-        return OpenAiServiceSettingsV1.fromMap(config);
+    private static OpenAiEmbeddingsServiceSettings serviceSettingsFromMap(Map<String, Object> config) {
+        return OpenAiEmbeddingsServiceSettings.fromMap(config);
     }
 
-    private static OpenAiTaskSettingsV1 taskSettingsFromMap(TaskType taskType, Map<String, Object> config) {
+    private static OpenAiEmbeddingsTaskSettings taskSettingsFromMap(TaskType taskType, Map<String, Object> config) {
         if (taskType != TaskType.TEXT_EMBEDDING) {
             throw new ElasticsearchStatusException(unsupportedTaskTypeErrorMsg(taskType), RestStatus.BAD_REQUEST);
         }
 
-        return OpenAiTaskSettingsV1.fromMap(config);
+        return OpenAiEmbeddingsTaskSettings.fromMap(config);
     }
 
     @Override

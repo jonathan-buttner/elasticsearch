@@ -9,7 +9,7 @@ package org.elasticsearch.xpack.inference.registry;
 
 import org.elasticsearch.xpack.inference.services.InferenceService;
 import org.elasticsearch.xpack.inference.services.elser.ElserMlNodeService;
-import org.elasticsearch.xpack.inference.services.openai.embeddings.OpenAiServiceV1;
+import org.elasticsearch.xpack.inference.services.openai.OpenAiService;
 
 import java.util.Optional;
 
@@ -17,18 +17,18 @@ public class ServiceRegistry {
 
     ElserMlNodeService elserService;
     // TODO maybe we need a factory?
-    OpenAiServiceV1 openAiServiceV1;
+    OpenAiService openAiService;
 
-    public ServiceRegistry(ElserMlNodeService elserService, OpenAiServiceV1 openAiServiceV1) {
+    public ServiceRegistry(ElserMlNodeService elserService, OpenAiService openAiService) {
         this.elserService = elserService;
-        this.openAiServiceV1 = openAiServiceV1;
+        this.openAiService = openAiService;
     }
 
     public Optional<InferenceService> getService(String name) {
         if (name.equals(ElserMlNodeService.NAME)) {
             return Optional.of(elserService);
-        } else if (name.equals(OpenAiServiceV1.NAME)) {
-            return Optional.of(openAiServiceV1);
+        } else if (name.equals(OpenAiService.NAME)) {
+            return Optional.of(openAiService);
         }
 
         return Optional.empty();

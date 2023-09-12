@@ -10,24 +10,24 @@ package org.elasticsearch.xpack.inference.services.openai.embeddings;
 import org.elasticsearch.xpack.inference.Model;
 import org.elasticsearch.xpack.inference.TaskType;
 
-public class OpenAiEmbeddingsModelV1 extends Model {
-    public OpenAiEmbeddingsModelV1(
+public class OpenAiEmbeddingsModel extends Model {
+    public OpenAiEmbeddingsModel(
         String modelId,
         TaskType taskType,
         String service,
-        OpenAiServiceSettingsV1 serviceSettings,
-        OpenAiTaskSettingsV1 taskSettings
+        OpenAiEmbeddingsServiceSettings serviceSettings,
+        OpenAiEmbeddingsTaskSettings taskSettings
     ) {
         super(modelId, taskType, service, serviceSettings, taskSettings);
     }
 
     @Override
-    public OpenAiServiceSettingsV1 getServiceSettings() {
-        return (OpenAiServiceSettingsV1) super.getServiceSettings();
+    public OpenAiEmbeddingsServiceSettings getServiceSettings() {
+        return (OpenAiEmbeddingsServiceSettings) super.getServiceSettings();
     }
 
     @Override
-    public OpenAiTaskSettingsV1 getTaskSettings() {
-        return (OpenAiTaskSettingsV1) super.getTaskSettings();
+    public OpenAiEmbeddingsTaskSettings getTaskSettings() {
+        return (OpenAiEmbeddingsTaskSettings) super.getTaskSettings();
     }
 }
