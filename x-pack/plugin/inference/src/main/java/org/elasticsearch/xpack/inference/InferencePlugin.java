@@ -63,6 +63,7 @@ import java.util.function.Supplier;
 public class InferencePlugin extends Plugin implements ActionPlugin, SystemIndexPlugin {
 
     public static final String NAME = "inference";
+    public static final String UTILITY_THREAD_POOL_NAME = "inference_utility";
 
     public static final Setting<SecureString> ENCRYPTION_KEY_SETTING = SecureSetting.secureString("xpack.inference.encryption_key", null);
 
