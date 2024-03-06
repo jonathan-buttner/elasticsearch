@@ -16,9 +16,7 @@ import org.elasticsearch.xcontent.XContentType;
 import org.elasticsearch.xpack.inference.external.cohere.CohereAccount;
 import org.elasticsearch.xpack.inference.external.request.HttpRequest;
 import org.elasticsearch.xpack.inference.external.request.Request;
-import org.elasticsearch.xpack.inference.services.cohere.embeddings.CohereEmbeddingType;
 import org.elasticsearch.xpack.inference.services.cohere.embeddings.CohereEmbeddingsModel;
-import org.elasticsearch.xpack.inference.services.cohere.embeddings.CohereEmbeddingsTaskSettings;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -34,21 +32,13 @@ public class CohereEmbeddingsRequest implements Request {
     private final CohereAccount account;
     private final List<String> input;
     private final URI uri;
-    private final CohereEmbeddingsTaskSettings taskSettings;
-    private final String model;
-    private final CohereEmbeddingType embeddingType;
-    private final String inferenceEntityId;
+    private final CohereEmbeddingsModel embeddingsModel;
 
     public CohereEmbeddingsRequest(CohereAccount account, List<String> input, CohereEmbeddingsModel embeddingsModel) {
-        Objects.requireNonNull(embeddingsModel);
-
+        this.embeddingsModel = Objects.requireNonNull(embeddingsModel);
         this.account = Objects.requireNonNull(account);
         this.input = Objects.requireNonNull(input);
         uri = buildUri(this.account.url(), "Cohere", CohereEmbeddingsRequest::buildDefaultUri);
-        taskSettings = embeddingsModel.getTaskSettings();
-        model = embeddingsModel.getServiceSettings().getCommonSettings().getModelId();
-        embeddingType = embeddingsModel.getServiceSettings().getEmbeddingType();
-        inferenceEntityId = embeddingsModel.getInferenceEntityId();
     }
 
     @Override
@@ -56,7 +46,14 @@ public class CohereEmbeddingsRequest implements Request {
         HttpPost httpPost = new HttpPost(uri);
 
         ByteArrayEntity byteEntity = new ByteArrayEntity(
-            Strings.toString(new CohereEmbeddingsRequestEntity(input, taskSettings, model, embeddingType)).getBytes(StandardCharsets.UTF_8)
+            Strings.toString(
+                new CohereEmbeddingsRequestEntity(
+                    input,
+                    embeddingsModel.getTaskSettings(),
+                    embeddingsModel.getServiceSettings().getCommonSettings().getModelId(),
+                    embeddingsModel.getServiceSettings().getEmbeddingType()
+                )
+            ).getBytes(StandardCharsets.UTF_8)
         );
         httpPost.setEntity(byteEntity);
 
@@ -69,7 +66,7 @@ public class CohereEmbeddingsRequest implements Request {
 
     @Override
     public String getInferenceEntityId() {
-        return inferenceEntityId;
+        return embeddingsModel.getInferenceEntityId();
     }
 
     @Override
@@ -85,6 +82,11 @@ public class CohereEmbeddingsRequest implements Request {
     @Override
     public boolean[] getTruncationInfo() {
         return null;
+    }
+
+    @Override
+    public String getService() {
+        return embeddingsModel.getConfigurations().getService();
     }
 
     // default for testing

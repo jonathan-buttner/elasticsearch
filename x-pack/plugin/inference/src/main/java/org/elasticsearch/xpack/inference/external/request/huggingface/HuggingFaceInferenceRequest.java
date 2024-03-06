@@ -76,4 +76,9 @@ public class HuggingFaceInferenceRequest implements Request {
     public boolean[] getTruncationInfo() {
         return truncationResult.truncated().clone();
     }
+
+    @Override
+    public String getService() {
+        return model.getConfigurations().getService();
+    }
 }

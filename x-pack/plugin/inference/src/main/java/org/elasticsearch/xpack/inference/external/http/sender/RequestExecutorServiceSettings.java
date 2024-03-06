@@ -34,7 +34,7 @@ public class RequestExecutorServiceSettings {
     }
 
     private volatile int queueCapacity;
-    private final List<Consumer<Integer>> queueCapacityCallbacks = new ArrayList<Consumer<Integer>>();
+    private final List<Consumer<Integer>> queueCapacityCallbacks = new ArrayList<>();
 
     public RequestExecutorServiceSettings(Settings settings, ClusterService clusterService) {
         queueCapacity = TASK_QUEUE_CAPACITY_SETTING.get(settings);

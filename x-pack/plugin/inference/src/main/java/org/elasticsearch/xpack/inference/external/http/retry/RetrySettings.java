@@ -12,6 +12,7 @@ import org.elasticsearch.common.settings.Setting;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.core.TimeValue;
 
+import java.time.Duration;
 import java.util.List;
 
 public class RetrySettings {
@@ -48,6 +49,7 @@ public class RetrySettings {
     static final Setting<TimeValue> RETRY_DEBUG_FREQUENCY_AMOUNT_SETTING = Setting.timeSetting(
         "xpack.inference.http.retry.debug_frequency_amount",
         TimeValue.timeValueMinutes(5),
+        TimeValue.timeValueSeconds(10),
         Setting.Property.NodeScope,
         Setting.Property.Dynamic
     );
@@ -56,14 +58,14 @@ public class RetrySettings {
     private volatile TimeValue maxDelayBound;
     private volatile TimeValue timeout;
     private volatile DebugFrequencyMode debugMode;
-    private volatile TimeValue debugFrequency;
+    private volatile Duration debugFrequency;
 
     public RetrySettings(Settings settings, ClusterService clusterService) {
         initialDelay = RETRY_INITIAL_DELAY_SETTING.get(settings);
         maxDelayBound = RETRY_MAX_DELAY_BOUND_SETTING.get(settings);
         timeout = RETRY_TIMEOUT_SETTING.get(settings);
         debugMode = RETRY_DEBUG_FREQUENCY_MODE_SETTING.get(settings);
-        debugFrequency = RETRY_DEBUG_FREQUENCY_AMOUNT_SETTING.get(settings);
+        debugFrequency = Duration.ofMillis(RETRY_DEBUG_FREQUENCY_AMOUNT_SETTING.get(settings).millis());
 
         addSettingsUpdateConsumers(clusterService);
     }
@@ -93,7 +95,7 @@ public class RetrySettings {
     }
 
     private void setDebugFrequencyAmount(TimeValue debugFrequency) {
-        this.debugFrequency = debugFrequency;
+        this.debugFrequency = Duration.ofMillis(debugFrequency.millis());
     }
 
     public static List<Setting<?>> getSettingsDefinitions() {
@@ -122,15 +124,11 @@ public class RetrySettings {
         return debugMode;
     }
 
-    TimeValue getDebugFrequency() {
+    Duration getDebugFrequency() {
         return debugFrequency;
     }
 
     enum DebugFrequencyMode {
-        /**
-         * Indicates that the debug messages should be logged every time
-         */
-        ON,
         /**
          * Indicates that the debug messages should never be logged
          */

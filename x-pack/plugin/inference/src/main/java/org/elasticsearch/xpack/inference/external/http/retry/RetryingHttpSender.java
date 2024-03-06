@@ -8,6 +8,7 @@
 package org.elasticsearch.xpack.inference.external.http.retry;
 
 import org.apache.http.client.protocol.HttpClientContext;
+import org.apache.http.impl.conn.ConnectionShutdownException;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.ElasticsearchStatusException;
@@ -22,6 +23,7 @@ import org.elasticsearch.xpack.inference.external.http.HttpResult;
 import org.elasticsearch.xpack.inference.external.request.Request;
 import org.elasticsearch.xpack.inference.logging.ThrottlerManager;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.net.UnknownHostException;
 import java.util.Objects;
@@ -31,12 +33,13 @@ import java.util.function.Supplier;
 import static org.elasticsearch.core.Strings.format;
 import static org.elasticsearch.xpack.inference.InferencePlugin.UTILITY_THREAD_POOL_NAME;
 
-public class RetryingHttpSender implements RequestSender {
+public class RetryingHttpSender implements RequestSender, Closeable {
     private final HttpClient httpClient;
     private final ThrottlerManager throttlerManager;
     private final RetrySettings retrySettings;
     private final ThreadPool threadPool;
     private final Executor executor;
+    private final RetryMetrics metrics;
 
     public RetryingHttpSender(
         HttpClient httpClient,
@@ -60,6 +63,12 @@ public class RetryingHttpSender implements RequestSender {
         this.retrySettings = Objects.requireNonNull(retrySettings);
         this.threadPool = Objects.requireNonNull(threadPool);
         this.executor = Objects.requireNonNull(executor);
+        metrics = new RetryMetrics(this.threadPool, this.retrySettings);
+    }
+
+    @Override
+    public void close() throws IOException {
+        metrics.close();
     }
 
     private class InternalRetrier extends RetryableAction<InferenceServiceResults> {
@@ -102,6 +111,7 @@ public class RetryingHttpSender implements RequestSender {
 
             ActionListener<HttpResult> responseListener = ActionListener.wrap(result -> {
                 try {
+                    metrics.add(request.getService(), result.response().getStatusLine().getStatusCode());
                     responseHandler.validateResponse(throttlerManager, logger, request, result);
                     InferenceServiceResults inferenceResults = responseHandler.parseResult(request, result);
 
@@ -142,7 +152,7 @@ public class RetryingHttpSender implements RequestSender {
                 );
             }
 
-            if (e instanceof IOException) {
+            if (e instanceof IOException || e instanceof ConnectionShutdownException) {
                 exceptionToReturn = new RetryException(true, e);
             }
 

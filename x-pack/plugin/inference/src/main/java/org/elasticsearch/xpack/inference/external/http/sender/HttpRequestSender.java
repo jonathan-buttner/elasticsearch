@@ -22,6 +22,7 @@ import org.elasticsearch.xpack.inference.external.http.retry.RetrySettings;
 import org.elasticsearch.xpack.inference.external.http.retry.RetryingHttpSender;
 import org.elasticsearch.xpack.inference.services.ServiceComponents;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.util.List;
 import java.util.Objects;
@@ -45,6 +46,7 @@ public class HttpRequestSender implements Sender {
         private final HttpClientManager httpClientManager;
         private final ClusterService clusterService;
         private final SingleRequestManager requestManager;
+        private final Closeable retryingSender;
 
         public Factory(ServiceComponents serviceComponents, HttpClientManager httpClientManager, ClusterService clusterService) {
             this.serviceComponents = Objects.requireNonNull(serviceComponents);
@@ -58,6 +60,7 @@ public class HttpRequestSender implements Sender {
                 serviceComponents.threadPool()
             );
             requestManager = new SingleRequestManager(requestSender);
+            this.retryingSender = requestSender;
         }
 
         public Sender createSender(String serviceName) {
@@ -67,7 +70,8 @@ public class HttpRequestSender implements Sender {
                 httpClientManager,
                 clusterService,
                 serviceComponents.settings(),
-                requestManager
+                requestManager,
+                retryingSender
             );
         }
     }
@@ -93,6 +97,7 @@ public class HttpRequestSender implements Sender {
     private final AtomicBoolean started = new AtomicBoolean(false);
     private volatile TimeValue maxRequestTimeout;
     private final CountDownLatch startCompleted = new CountDownLatch(2);
+    private final Closeable retryingSender;
 
     private HttpRequestSender(
         String serviceName,
@@ -100,7 +105,8 @@ public class HttpRequestSender implements Sender {
         HttpClientManager httpClientManager,
         ClusterService clusterService,
         Settings settings,
-        SingleRequestManager requestManager
+        SingleRequestManager requestManager,
+        Closeable retryingSender
     ) {
         this.threadPool = Objects.requireNonNull(threadPool);
         this.manager = Objects.requireNonNull(httpClientManager);
@@ -111,6 +117,7 @@ public class HttpRequestSender implements Sender {
             new RequestExecutorServiceSettings(settings, clusterService),
             requestManager
         );
+        this.retryingSender = Objects.requireNonNull(retryingSender);
 
         this.maxRequestTimeout = MAX_REQUEST_TIMEOUT.get(settings);
         addSettingsUpdateConsumers(clusterService);
@@ -143,6 +150,7 @@ public class HttpRequestSender implements Sender {
     public void close() throws IOException {
         manager.close();
         service.shutdown();
+        retryingSender.close();
     }
 
     /**

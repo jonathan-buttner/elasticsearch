@@ -98,6 +98,11 @@ public class OpenAiEmbeddingsRequest implements Request {
         return truncationResult.truncated().clone();
     }
 
+    @Override
+    public String getService() {
+        return model.getConfigurations().getService();
+    }
+
     // default for testing
     static URI buildDefaultUri() throws URISyntaxException {
         return new URIBuilder().setScheme("https")

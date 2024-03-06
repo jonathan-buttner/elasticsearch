@@ -31,4 +31,9 @@ public interface Request {
      * @return the unique identifier for the inference entity configuration
      */
     String getInferenceEntityId();
+
+    /**
+     * Returns the service field from the model configurations (e.g. openai, cohere, huggingface etc).
+     */
+    String getService();
 }
