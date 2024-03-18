@@ -165,6 +165,17 @@ public class AdjustableCapacityBlockingQueueTests extends ESTestCase {
         assertThat(queue.size(), is(1));
     }
 
+    public void testPeek_ReturnsItemWithoutRemoving() {
+        var queue = new AdjustableCapacityBlockingQueue<>(QUEUE_CREATOR, 1);
+        assertThat(queue.size(), is(0));
+
+        queue.offer(0);
+        assertThat(queue.size(), is(1));
+        assertThat(queue.peek(), is(0));
+        assertThat(queue.size(), is(1));
+        assertThat(queue.peek(), is(0));
+    }
+
     public void testDrainTo_MovesAllItemsFromQueueToList() {
         var queue = new AdjustableCapacityBlockingQueue<>(QUEUE_CREATOR, 2);
         assertThat(queue.size(), is(0));
