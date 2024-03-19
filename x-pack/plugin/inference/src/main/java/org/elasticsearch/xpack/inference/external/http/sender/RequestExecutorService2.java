@@ -11,6 +11,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.common.util.concurrent.EsRejectedExecutionException;
 import org.elasticsearch.core.Strings;
+import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.xpack.inference.common.AdjustableCapacityBlockingQueue;
 
@@ -39,9 +40,9 @@ class RequestExecutorService2 {
      * If a thread is not already processing tasks, a short-lived thread will be used to process the tasks in the queue
      * and once all the queue is empty the thread will exit.
      */
-    private static class InferenceEndpointHandler {
+    private static class EndpointHandler {
 
-        private static final Logger logger = LogManager.getLogger(InferenceEndpointHandler.class);
+        private static final Logger logger = LogManager.getLogger(EndpointHandler.class);
         private static final int POLLING_WAIT_TIME = 200;
 
         private final String id;
@@ -50,8 +51,9 @@ class RequestExecutorService2 {
         private volatile boolean shutdown = false;
         private final ReentrantReadWriteLock readWriteLock = new ReentrantReadWriteLock();
         private final ThreadPool threadPool;
+        // TODO create a semaphore for determine if the thread is running or not
 
-        InferenceEndpointHandler(String id, AdjustableCapacityBlockingQueue<RejectableTask> queue, ThreadPool threadPool) {
+        EndpointHandler(String id, AdjustableCapacityBlockingQueue<RejectableTask> queue, ThreadPool threadPool) {
             this.id = Objects.requireNonNull(id);
             this.queue = Objects.requireNonNull(queue);
             this.threadPool = Objects.requireNonNull(threadPool);
@@ -67,6 +69,7 @@ class RequestExecutorService2 {
             }
 
             // not strictly necessary but will break out of the poll delay immediately
+            // TODO do we need this?
             queue.offer(new NoopTask());
         }
 
@@ -109,6 +112,7 @@ class RequestExecutorService2 {
                     return;
                 }
 
+                // check to see if we need to spin up a thread to handle this request
                 if (running == false) {
                     readWriteLock.readLock().unlock();
                     readWriteLock.writeLock().lock();
@@ -116,7 +120,7 @@ class RequestExecutorService2 {
                         // check again just in case another thread started running while we were obtaining the write lock
                         if (running == false) {
                             running = true;
-                            threadPool.executor(UTILITY_THREAD_POOL_NAME).execute(() -> handleRequests());
+                            threadPool.executor(UTILITY_THREAD_POOL_NAME).execute(this::handleSingleRequest);
                         }
                         readWriteLock.readLock().lock();
                     } finally {
@@ -128,27 +132,54 @@ class RequestExecutorService2 {
             }
         }
 
-        // private void startHandlingTasks() {
-        // readWriteLock.readLock().lock();
-        // try {
-        // if (running == false) {
-        // readWriteLock.readLock().unlock();
-        // readWriteLock.writeLock().lock();
-        // try {
-        // // check again just in case another thread started running while we were obtaining the write lock
-        // if (running == false) {
-        // running = true;
-        // threadPool.executor(UTILITY_THREAD_POOL_NAME).execute(() -> handleRequests());
-        // }
-        // readWriteLock.readLock().lock();
-        // } finally {
-        // readWriteLock.writeLock().unlock();
-        // }
-        // }
-        // } finally {
-        // readWriteLock.readLock().unlock();
-        // }
-        // }
+        private TimeValue getScheduleTime() {
+            // TODO return result from rate limiter
+            return TimeValue.ZERO;
+        }
+
+        private void finishedSchedulingRequest() {
+            final ReentrantReadWriteLock.WriteLock writeLock = readWriteLock.writeLock();
+            writeLock.lock();
+            try {
+                if (queue.peek() == null) {
+                    running = false;
+                } else if (shutdown == false) {
+                    threadPool.executor(UTILITY_THREAD_POOL_NAME).execute(this::handleSingleRequest);
+                }
+            } finally {
+                writeLock.unlock();
+            }
+        }
+
+        private void handleSingleRequest() {
+            try {
+                final ReentrantReadWriteLock.ReadLock readLock = readWriteLock.readLock();
+                readLock.lock();
+                try {
+                    if (shutdown == false) {
+                        var task = queue.take();
+                        // TODO call request manager.execute and give it the rate limiter
+                        // that call could schedule a new thread so we might still be "running" once it returns
+                    }
+                } finally {
+                    readLock.unlock();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                doTerminateFromInterruption();
+            } finally {
+                final ReentrantReadWriteLock.ReadLock readLock = readWriteLock.readLock();
+                readLock.lock();
+                try {
+                    if (shutdown) {
+                        // TODO reject tasks
+                        // TODO during rejecting tasks do we need a write lock?
+                    }
+                } finally {
+                    readLock.unlock();
+                }
+            }
+        }
 
         private void handleRequests() {
             try {
