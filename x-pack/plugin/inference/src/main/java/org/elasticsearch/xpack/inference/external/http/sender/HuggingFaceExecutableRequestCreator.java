@@ -7,7 +7,6 @@
 
 package org.elasticsearch.xpack.inference.external.http.sender;
 
-import org.apache.http.client.protocol.HttpClientContext;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.action.ActionListener;
@@ -46,21 +45,12 @@ public class HuggingFaceExecutableRequestCreator implements ExecutableRequestCre
         List<String> input,
         RequestSender requestSender,
         Supplier<Boolean> hasRequestCompletedFunction,
-        HttpClientContext context,
         ActionListener<InferenceServiceResults> listener
     ) {
         var truncatedInput = truncate(input, model.getTokenLimit());
         var request = new HuggingFaceInferenceRequest(truncator, account, truncatedInput, model);
 
-        return new ExecutableInferenceRequest(
-            requestSender,
-            logger,
-            request,
-            context,
-            responseHandler,
-            hasRequestCompletedFunction,
-            listener
-        );
+        return new ExecutableInferenceRequest(requestSender, logger, request, responseHandler, hasRequestCompletedFunction, listener);
     }
 
     @Override

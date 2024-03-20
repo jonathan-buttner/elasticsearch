@@ -7,7 +7,6 @@
 
 package org.elasticsearch.xpack.inference.external.http.sender;
 
-import org.apache.http.client.protocol.HttpClientContext;
 import org.elasticsearch.xpack.inference.external.http.retry.RetryingHttpSender;
 
 import java.util.Objects;
@@ -23,7 +22,7 @@ public class SingleRequestManager {
         this.requestSender = Objects.requireNonNull(requestSender);
     }
 
-    public void execute(InferenceRequest inferenceRequest, HttpClientContext context) {
+    public void execute(InferenceRequest inferenceRequest) {
         if (isNoopRequest(inferenceRequest) || inferenceRequest.hasCompleted()) {
             return;
         }
@@ -33,7 +32,6 @@ public class SingleRequestManager {
                 inferenceRequest.getInput(),
                 requestSender,
                 inferenceRequest.getRequestCompletedFunction(),
-                context,
                 inferenceRequest.getListener()
             )
             .run();

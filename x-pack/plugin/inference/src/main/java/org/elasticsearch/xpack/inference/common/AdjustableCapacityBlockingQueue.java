@@ -128,6 +128,24 @@ public class AdjustableCapacityBlockingQueue<E> {
         }
     }
 
+    // TODO write tests
+    public E poll() {
+        final ReentrantReadWriteLock.ReadLock readLock = lock.readLock();
+
+        readLock.lock();
+        try {
+            var oldItem = prioritizedReadingQueue.poll();
+
+            if (oldItem != null) {
+                return oldItem;
+            }
+
+            return currentQueue.poll();
+        } finally {
+            readLock.unlock();
+        }
+    }
+
     public E take() throws InterruptedException {
         final ReentrantReadWriteLock.ReadLock readLock = lock.readLock();
 
@@ -144,6 +162,8 @@ public class AdjustableCapacityBlockingQueue<E> {
             readLock.unlock();
         }
     }
+
+
 
     // TODO write tests
     public E peek() {

@@ -7,7 +7,6 @@
 
 package org.elasticsearch.xpack.inference.external.http.sender;
 
-import org.apache.http.client.protocol.HttpClientContext;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.inference.InferenceServiceResults;
 import org.elasticsearch.inference.Model;
@@ -24,7 +23,6 @@ public interface ExecutableRequestCreator {
         List<String> input,
         RequestSender requestSender,
         Supplier<Boolean> hasRequestCompletedFunction,
-        HttpClientContext context,
         ActionListener<InferenceServiceResults> listener
     );
 

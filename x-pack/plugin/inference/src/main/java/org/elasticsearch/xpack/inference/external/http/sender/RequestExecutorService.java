@@ -187,7 +187,7 @@ class RequestExecutorService implements RequestExecutor {
 
     private void executeTask(RejectableTask task) {
         try {
-            requestManager.execute(task, httpContext);
+            requestManager.execute(task);
         } catch (Exception e) {
             logger.warn(format("Http executor service [%s] failed to execute request [%s]", serviceName, task), e);
         }
