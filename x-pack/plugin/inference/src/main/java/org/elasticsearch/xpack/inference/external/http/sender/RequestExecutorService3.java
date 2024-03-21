@@ -14,7 +14,11 @@ import org.elasticsearch.core.Strings;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.xpack.inference.common.AdjustableCapacityBlockingQueue;
+import org.elasticsearch.xpack.inference.common.RateLimiter;
+import org.elasticsearch.xpack.inference.common.WaitGroup;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -22,10 +26,8 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.Phaser;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.elasticsearch.core.Strings.format;
@@ -64,7 +66,7 @@ class RequestExecutorService3 {
         this.settings = Objects.requireNonNull(settings);
     }
 
-    // TODO add rate limiter as a member of the InferenceEndpoint
+    // TODO schedule a cleanup thread to run on an interval and remove entries from the map that are over a day old
 
     /**
      * Provides a mechanism for ensuring that only a single thread is processing tasks from the queue at a time.
@@ -78,33 +80,44 @@ class RequestExecutorService3 {
         private final AdjustableCapacityBlockingQueue<RejectableTask> queue;
         private final Semaphore threadRunning = new Semaphore(1);
         private final AtomicBoolean shutdown = new AtomicBoolean();
-        private final Phaser phaser = new Phaser();
+        private final WaitGroup waitGroup = new WaitGroup();
         private final ThreadPool threadPool;
         private final SingleRequestManager requestManager;
         private final String id;
+        private Instant timeOfLastEnqueue;
+        private final Clock clock;
+        private final RateLimiter rateLimiter;
 
         RateLimitingEndpointHandler(
             String id,
             ThreadPool threadPool,
             AdjustableCapacityBlockingQueue.QueueCreator<RejectableTask> createQueue,
             RequestExecutorServiceSettings settings,
-            SingleRequestManager requestManager
+            SingleRequestManager requestManager,
+            Clock clock,
+            double tokensPerTimeUnit,
+            TimeUnit timeUnit
         ) {
             this.id = Objects.requireNonNull(id);
             this.queue = new AdjustableCapacityBlockingQueue<>(createQueue, settings.getQueueCapacity());
             this.threadPool = Objects.requireNonNull(threadPool);
             this.requestManager = Objects.requireNonNull(requestManager);
+            this.clock = Objects.requireNonNull(clock);
+
+            Objects.requireNonNull(timeUnit);
+            // TODO figure out a good limit
+            rateLimiter = new RateLimiter(1, tokensPerTimeUnit, timeUnit);
 
             settings.registerQueueCapacityCallback(this::onCapacityChange);
         }
 
         private void onCapacityChange(int capacity) {
-            logger.debug(() -> Strings.format("Setting queue capacity to [%s]", capacity));
+            logger.debug(() -> Strings.format("Executor service [%s] setting queue capacity to [%s]", id, capacity));
 
             try {
                 queue.setCapacity(capacity);
             } catch (Exception e) {
-                logger.warn(format("Failed to set the capacity of the task queue to [%s] for [%s]", capacity, id), e);
+                logger.warn(format("Executor service [%s] failed to set the capacity of the task queue to [%s]", id, capacity), e);
             }
         }
 
@@ -113,20 +126,11 @@ class RequestExecutorService3 {
         }
 
         public boolean isTerminated() {
-            return phaser.isTerminated();
+            return waitGroup.isTerminated();
         }
 
         public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
-            try {
-                phaser.register();
-                while (phaser.isTerminated() == false) {
-                    phaser.awaitAdvanceInterruptibly(phaser.arriveAndDeregister(), timeout, unit);
-                }
-            } catch (TimeoutException e) {
-                return false;
-            }
-
-            return true;
+            return waitGroup.awaitTermination(timeout, unit);
         }
 
         public void shutdown() {
@@ -137,7 +141,13 @@ class RequestExecutorService3 {
             return shutdown.get();
         }
 
+        public Instant timeOfLastEnqueue() {
+            return timeOfLastEnqueue;
+        }
+
         public void enqueue(RequestTask task) {
+            timeOfLastEnqueue = Instant.now(clock);
+
             if (isShutdown()) {
                 EsRejectedExecutionException rejected = new EsRejectedExecutionException(
                     format(
@@ -181,11 +191,12 @@ class RequestExecutorService3 {
                 // Now that we have the exclusive lock, check again to see if we have work to do
                 if (queue.peek() != null) {
                     try {
-                        phaser.register();
+                        waitGroup.add();
                         threadPool.executor(UTILITY_THREAD_POOL_NAME).execute(this::handleSingleRequest);
                     } catch (Exception e) {
-                        logger.warn(Strings.format("[%s] Creating a thread to handle request failed"), id);
+                        logger.warn(Strings.format("Executor service [%s] failed to create a thread to handle request", id));
                         threadRunning.release();
+                        waitGroup.done();
                     }
                 } else {
                     // Someone completed the work between when we checked and got the lock so we'll just finish
@@ -205,13 +216,26 @@ class RequestExecutorService3 {
                 onFinishedExecutingTask();
             };
 
-            // TODO get time from rate limiter
-            var timeDelay = TimeValue.ZERO;
-            // TODO
-            if (timeDelay == 0) {
-                threadPool.executor(UTILITY_THREAD_POOL_NAME).execute(toRun);
+            var timeDelay = rateLimiter.reserve(1);
+
+            try {
+                if (shouldExecuteImmediately(timeDelay)) {
+                    threadPool.executor(UTILITY_THREAD_POOL_NAME).execute(toRun);
+                } else {
+                    threadPool.schedule(toRun, timeDelay, threadPool.executor(UTILITY_THREAD_POOL_NAME));
+                }
+            } catch (Exception e) {
+                logger.warn(Strings.format("Executor service [%s] failed to create a thread to handle request", id));
+                handleFailureWhileInCriticalSection();
             }
-            threadPool.schedule(toRun, timeDelay, threadPool.executor(UTILITY_THREAD_POOL_NAME));
+        }
+
+        private static boolean shouldExecuteImmediately(TimeValue delay) {
+            return delay.duration() == 0;
+        }
+
+        private void handleFailureWhileInCriticalSection() {
+            onFinishedExecutingTask();
         }
 
         private void onFinishedExecutingTask() {
@@ -219,7 +243,7 @@ class RequestExecutorService3 {
             try {
                 checkForTask();
             } finally {
-                phaser.arriveAndDeregister();
+                waitGroup.done();
             }
         }
 
@@ -241,13 +265,13 @@ class RequestExecutorService3 {
                 if (isShutdown()) {
                     notifyRequestsOfShutdown();
                 }
-                phaser.arriveAndDeregister();
+                waitGroup.done();
             }
         }
 
         private void executeTask(RejectableTask task) {
             try {
-                phaser.register();
+                waitGroup.add();
                 requestManager.execute(task, this::scheduleRequest);
             } catch (Exception e) {
                 logger.warn(
@@ -258,6 +282,7 @@ class RequestExecutorService3 {
                     ),
                     e
                 );
+                handleFailureWhileInCriticalSection();
             }
         }
 

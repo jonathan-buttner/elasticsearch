@@ -8,6 +8,7 @@
 package org.elasticsearch.xpack.inference.common;
 
 import org.elasticsearch.common.Strings;
+import org.elasticsearch.core.TimeValue;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -87,11 +88,15 @@ public class RateLimiter {
     }
 
     /**
-     * Causes the thread to wait until the tokens are available
+     * Returns the amount of time to wait for the tokens to become available.
      * @param tokens the number of items of work that should be throttled, typically you'd pass a value of 1 here
-     * @throws InterruptedException _
+     * @return the amount of time to wait
      */
-    public void acquire(int tokens) throws InterruptedException {
+    public TimeValue reserve(int tokens) {
+        return new TimeValue(reserveInternal(tokens), TimeUnit.MICROSECONDS);
+    }
+
+    private long reserveInternal(int tokens) {
         if (tokens <= 0) {
             throw new IllegalArgumentException("Requested tokens must be positive");
         }
@@ -106,7 +111,16 @@ public class RateLimiter {
             nextTokenAvailability = nextTokenAvailability.plus((long) microsToWait, ChronoUnit.MICROS);
         }
 
-        sleeper.sleep((long) microsToWait);
+        return (long) microsToWait;
+    }
+
+    /**
+     * Causes the thread to wait until the tokens are available
+     * @param tokens the number of items of work that should be throttled, typically you'd pass a value of 1 here
+     * @throws InterruptedException _
+     */
+    public void acquire(int tokens) throws InterruptedException {
+        sleeper.sleep(reserveInternal(tokens));
     }
 
     private void accumulateTokens() {
