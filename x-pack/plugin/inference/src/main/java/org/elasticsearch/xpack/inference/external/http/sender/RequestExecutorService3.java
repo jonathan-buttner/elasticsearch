@@ -174,24 +174,6 @@ class RequestExecutorService3 {
             }
         }
 
-        private TimeValue getScheduleTime() {
-            // TODO return result from rate limiter
-            return TimeValue.ZERO;
-        }
-
-        private void onFinishedExecutingTask() {
-            threadRunning.release();
-            try {
-                if (isShutdown()) {
-                    notifyRequestsOfShutdown();
-                } else {
-                    checkForTask();
-                }
-            } finally {
-                phaser.arriveAndDeregister();
-            }
-        }
-
         private void checkForTask() {
             // There is a possibility that a request could come in, acquire the semaphore, and complete the task between when
             // we peek and when we attempt to acquire the semaphore here. We'll handle that by peeking while attempt to dequeue
@@ -212,18 +194,53 @@ class RequestExecutorService3 {
             }
         }
 
+        private TimeValue getScheduleTime() {
+            // TODO return result from rate limiter
+            return TimeValue.ZERO;
+        }
+
+        private void scheduleRequest(Runnable executableRequest) {
+            Runnable toRun = () -> {
+                executableRequest.run();
+                onFinishedExecutingTask();
+            };
+
+            // TODO get time from rate limiter
+            var timeDelay = TimeValue.ZERO;
+            // TODO
+            if (timeDelay == 0) {
+                threadPool.executor(UTILITY_THREAD_POOL_NAME).execute(toRun);
+            }
+            threadPool.schedule(toRun, timeDelay, threadPool.executor(UTILITY_THREAD_POOL_NAME));
+        }
+
+        private void onFinishedExecutingTask() {
+            threadRunning.release();
+            try {
+                checkForTask();
+            } finally {
+                phaser.arriveAndDeregister();
+            }
+        }
+
         private void handleSingleRequest() {
             try {
                 var task = queue.poll();
 
                 // If we have a buggy race condition it might be possible for another thread to get the task
-                // if that happens we'll just finish without doing anything
+                // Another scenario where the task would be null would be if we're instructed to shut down and some other
+                // thread drained the queue already
                 if (task != null) {
-                    // TODO call request manager.execute and give it the rate limiter
-                    // that call could schedule a new thread so we might still be "running" once it returns
+                    // This could schedule a thread execution in the future, if the request needs to be rate limited
                     executeTask(task);
+                } else {
+                    // We don't have a task to run, so release the thread lock
+                    threadRunning.release();
                 }
             } finally {
+                if (isShutdown()) {
+                    notifyRequestsOfShutdown();
+                }
                 phaser.arriveAndDeregister();
             }
         }
@@ -231,7 +248,7 @@ class RequestExecutorService3 {
         private void executeTask(RejectableTask task) {
             try {
                 phaser.register();
-                requestManager.execute(task);
+                requestManager.execute(task, this::scheduleRequest);
             } catch (Exception e) {
                 logger.warn(
                     format(
@@ -283,5 +300,6 @@ class RequestExecutorService3 {
                 );
             }
         }
+
     }
 }

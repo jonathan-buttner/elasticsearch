@@ -10,6 +10,7 @@ package org.elasticsearch.xpack.inference.external.http.sender;
 import org.elasticsearch.xpack.inference.external.http.retry.RetryingHttpSender;
 
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * Handles executing a single inference request at a time.
@@ -22,7 +23,7 @@ public class SingleRequestManager {
         this.requestSender = Objects.requireNonNull(requestSender);
     }
 
-    public void execute(InferenceRequest inferenceRequest) {
+    public void execute(InferenceRequest inferenceRequest, Consumer<Runnable> requestScheduler) {
         if (isNoopRequest(inferenceRequest) || inferenceRequest.hasCompleted()) {
             return;
         }
