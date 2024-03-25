@@ -205,15 +205,10 @@ class RequestExecutorService3 {
             }
         }
 
-        private TimeValue getScheduleTime() {
-            // TODO return result from rate limiter
-            return TimeValue.ZERO;
-        }
-
         private void scheduleRequest(Runnable executableRequest) {
             Runnable toRun = () -> {
                 executableRequest.run();
-                onFinishedExecutingTask();
+                onFinishExecutingRequest();
             };
 
             var timeDelay = rateLimiter.reserve(1);
@@ -235,10 +230,10 @@ class RequestExecutorService3 {
         }
 
         private void handleFailureWhileInCriticalSection() {
-            onFinishedExecutingTask();
+            onFinishExecutingRequest();
         }
 
-        private void onFinishedExecutingTask() {
+        private void onFinishExecutingRequest() {
             threadRunning.release();
             try {
                 checkForTask();

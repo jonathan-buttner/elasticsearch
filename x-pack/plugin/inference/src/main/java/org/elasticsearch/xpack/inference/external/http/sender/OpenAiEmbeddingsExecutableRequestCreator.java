@@ -68,4 +68,9 @@ public class OpenAiEmbeddingsExecutableRequestCreator implements ExecutableReque
     public Model getModel() {
         return model;
     }
+
+    // TODO this needs to be a class that we pass to OpenAiEmbeddingsRequest and then we just use the hashcode of the class
+    public int requestHash() {
+        return Objects.hash(model.getSecretSettings().apiKey(), model.getTaskSettings().)
+    }
 }
