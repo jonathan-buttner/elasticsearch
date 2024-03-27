@@ -255,7 +255,8 @@ public class OpenAiService extends SenderService {
             SimilarityMeasure.DOT_PRODUCT,
             embeddingSize,
             model.getServiceSettings().maxInputTokens(),
-            model.getServiceSettings().dimensionsSetByUser()
+            model.getServiceSettings().dimensionsSetByUser(),
+            model.getServiceSettings().rateLimitSettings()
         );
 
         return new OpenAiEmbeddingsModel(model, serviceSettings);

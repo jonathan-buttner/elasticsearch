@@ -10,13 +10,13 @@ package org.elasticsearch.xpack.inference.external.http.sender;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.action.ActionListener;
+import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.inference.InferenceServiceResults;
-import org.elasticsearch.inference.Model;
 import org.elasticsearch.xpack.inference.common.Truncator;
 import org.elasticsearch.xpack.inference.external.http.retry.RequestSender;
 import org.elasticsearch.xpack.inference.external.http.retry.ResponseHandler;
-import org.elasticsearch.xpack.inference.external.openai.OpenAiAccount;
 import org.elasticsearch.xpack.inference.external.openai.OpenAiResponseHandler;
+import org.elasticsearch.xpack.inference.external.ratelimit.RateLimitSettings;
 import org.elasticsearch.xpack.inference.external.request.openai.OpenAiEmbeddingsRequest;
 import org.elasticsearch.xpack.inference.external.response.openai.OpenAiEmbeddingsResponseEntity;
 import org.elasticsearch.xpack.inference.services.openai.embeddings.OpenAiEmbeddingsModel;
@@ -38,17 +38,19 @@ public class OpenAiEmbeddingsExecutableRequestCreator implements ExecutableReque
     }
 
     private final Truncator truncator;
-    private final OpenAiEmbeddingsModel model;
-    private final OpenAiAccount account;
+    private final Integer maxTokens;
+    private final String inferenceEntityId;
+    private final RateLimitSettings rateLimitSettings;
+    private final OpenAiEmbeddingsRequest.Configuration configuration;
 
     public OpenAiEmbeddingsExecutableRequestCreator(OpenAiEmbeddingsModel model, Truncator truncator) {
-        this.model = Objects.requireNonNull(model);
-        this.account = new OpenAiAccount(
-            this.model.getServiceSettings().uri(),
-            this.model.getServiceSettings().organizationId(),
-            this.model.getSecretSettings().apiKey()
-        );
+        Objects.requireNonNull(model);
+        maxTokens = model.getServiceSettings().maxInputTokens();
+        inferenceEntityId = model.getInferenceEntityId();
+        configuration = OpenAiEmbeddingsRequest.Configuration.of(model);
         this.truncator = Objects.requireNonNull(truncator);
+        // TODO get this from the model
+        rateLimitSettings = new RateLimitSettings(TimeValue.timeValueMinutes(3000));
     }
 
     @Override
@@ -58,19 +60,24 @@ public class OpenAiEmbeddingsExecutableRequestCreator implements ExecutableReque
         Supplier<Boolean> hasRequestCompletedFunction,
         ActionListener<InferenceServiceResults> listener
     ) {
-        var truncatedInput = truncate(input, model.getServiceSettings().maxInputTokens());
-        OpenAiEmbeddingsRequest request = new OpenAiEmbeddingsRequest(truncator, account, truncatedInput, model);
+        var truncatedInput = truncate(input, maxTokens);
+        OpenAiEmbeddingsRequest request = new OpenAiEmbeddingsRequest(truncator, configuration, truncatedInput, inferenceEntityId);
 
         return new ExecutableInferenceRequest(requestSender, logger, request, HANDLER, hasRequestCompletedFunction, listener);
     }
 
     @Override
-    public Model getModel() {
-        return model;
+    public String inferenceEntityId() {
+        return inferenceEntityId;
     }
 
-    // TODO this needs to be a class that we pass to OpenAiEmbeddingsRequest and then we just use the hashcode of the class
-    public int requestHash() {
-        return Objects.hash(model.getSecretSettings().apiKey(), model.getTaskSettings().)
+    @Override
+    public Object requestConfiguration() {
+        return configuration;
+    }
+
+    @Override
+    public RateLimitSettings rateLimitSettings() {
+        return null;
     }
 }

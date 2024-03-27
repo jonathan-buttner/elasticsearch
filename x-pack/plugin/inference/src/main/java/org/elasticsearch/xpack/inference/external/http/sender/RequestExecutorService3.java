@@ -9,18 +9,27 @@ package org.elasticsearch.xpack.inference.external.http.sender;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.elasticsearch.action.ActionListener;
+import org.elasticsearch.action.support.ContextPreservingActionListener;
 import org.elasticsearch.common.util.concurrent.EsRejectedExecutionException;
+import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.Strings;
 import org.elasticsearch.core.TimeValue;
+import org.elasticsearch.inference.InferenceServiceResults;
+import org.elasticsearch.threadpool.Scheduler;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.xpack.inference.common.AdjustableCapacityBlockingQueue;
 import org.elasticsearch.xpack.inference.common.RateLimiter;
 import org.elasticsearch.xpack.inference.common.WaitGroup;
+import org.elasticsearch.xpack.inference.external.ratelimit.RateLimitSettings;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
@@ -55,18 +64,98 @@ class RequestExecutorService3 {
             }
         };
 
+    private static final TimeValue DEFAULT_CLEANUP_INTERVAL = TimeValue.timeValueDays(10);
+    private static final Duration DEFAULT_STALE_DURATION = Duration.ofDays(10);
+
+    private static final Logger logger = LogManager.getLogger(RequestExecutorService3.class);
+
     private final ConcurrentMap<Object, RateLimitingEndpointHandler> inferenceEndpoints = new ConcurrentHashMap<>();
     private final ThreadPool threadPool;
     private final SingleRequestManager requestManager;
     private final RequestExecutorServiceSettings settings;
+    private final TimeValue cleanUpInterval;
+    private final Duration staleEndpointDuration;
+    private final Clock clock;
 
     RequestExecutorService3(ThreadPool threadPool, RequestExecutorServiceSettings settings, SingleRequestManager requestManager) {
+        this(threadPool, settings, requestManager, DEFAULT_CLEANUP_INTERVAL, DEFAULT_STALE_DURATION, Clock.systemUTC());
+    }
+
+    RequestExecutorService3(
+        ThreadPool threadPool,
+        RequestExecutorServiceSettings settings,
+        SingleRequestManager requestManager,
+        TimeValue cleanUpInterval,
+        Duration staleEndpointDuration,
+        Clock clock
+    ) {
         this.threadPool = Objects.requireNonNull(threadPool);
         this.requestManager = Objects.requireNonNull(requestManager);
         this.settings = Objects.requireNonNull(settings);
+        this.cleanUpInterval = Objects.requireNonNull(cleanUpInterval);
+        this.staleEndpointDuration = Objects.requireNonNull(staleEndpointDuration);
+        this.clock = Objects.requireNonNull(clock);
+    }
+
+    /**
+     * Execute the request at some point in the future.
+     *
+     * @param requestCreator the http request to send
+     * @param input the text to perform inference on
+     * @param timeout the maximum time to wait for this request to complete (failing or succeeding). Once the time elapses, the
+     *                listener::onFailure is called with a {@link org.elasticsearch.ElasticsearchTimeoutException}.
+     *                If null, then the request will wait forever
+     * @param listener an {@link ActionListener<InferenceServiceResults>} for the response or failure
+     */
+    public void execute(
+        ExecutableRequestCreator requestCreator,
+        List<String> input,
+        @Nullable TimeValue timeout,
+        ActionListener<InferenceServiceResults> listener
+    ) {
+        var task = new RequestTask(
+            requestCreator,
+            input,
+            timeout,
+            threadPool,
+            // TODO when multi-tenancy (as well as batching) is implemented we need to be very careful that we preserve
+            // the thread contexts correctly to avoid accidentally retrieving the credentials for the wrong user
+            ContextPreservingActionListener.wrapPreservingContext(listener, threadPool.getThreadContext())
+        );
+
+        var endpoint = inferenceEndpoints.computeIfAbsent(
+            requestCreator.requestConfiguration(),
+            key -> new RateLimitingEndpointHandler(
+                Integer.toString(requestCreator.requestConfiguration().hashCode()),
+                threadPool,
+                QUEUE_CREATOR,
+                settings,
+                requestManager,
+                clock,
+                requestCreator.rateLimitSettings()
+            )
+        );
+
+        endpoint.executeTask(task);
     }
 
     // TODO schedule a cleanup thread to run on an interval and remove entries from the map that are over a day old
+    private Scheduler.Cancellable startCleanUpThread(ThreadPool threadPool) {
+        logger.debug(() -> Strings.format("Clean up task scheduled with interval [%s]", cleanUpInterval));
+
+        return threadPool.scheduleWithFixedDelay(this::removeOldEndpoints, cleanUpInterval, threadPool.executor(UTILITY_THREAD_POOL_NAME));
+    }
+
+    private void removeOldEndpoints() {
+        var now = Instant.now(clock);
+        for (Iterator<Map.Entry<Object, RateLimitingEndpointHandler>> iterator = inferenceEndpoints.entrySet().iterator(); iterator.hasNext()) {
+            var endpoint = iterator.next();
+            // if the current time is after the last time the endpoint received a request + allowed stale period then we'll remove it
+            if (now.isAfter(endpoint.getValue().timeOfLastEnqueue().plus(staleEndpointDuration))) {
+                iterator.remove();
+            }
+        }
+    }
 
     /**
      * Provides a mechanism for ensuring that only a single thread is processing tasks from the queue at a time.
@@ -95,8 +184,7 @@ class RequestExecutorService3 {
             RequestExecutorServiceSettings settings,
             SingleRequestManager requestManager,
             Clock clock,
-            double tokensPerTimeUnit,
-            TimeUnit timeUnit
+            RateLimitSettings rateLimitSettings
         ) {
             this.id = Objects.requireNonNull(id);
             this.queue = new AdjustableCapacityBlockingQueue<>(createQueue, settings.getQueueCapacity());
@@ -104,9 +192,9 @@ class RequestExecutorService3 {
             this.requestManager = Objects.requireNonNull(requestManager);
             this.clock = Objects.requireNonNull(clock);
 
-            Objects.requireNonNull(timeUnit);
+            Objects.requireNonNull(rateLimitSettings);
             // TODO figure out a good limit
-            rateLimiter = new RateLimiter(1, tokensPerTimeUnit, timeUnit);
+            rateLimiter = new RateLimiter(1, rateLimitSettings.tokensPerTimeUnit(), rateLimitSettings.timeUnit());
 
             settings.registerQueueCapacityCallback(this::onCapacityChange);
         }
@@ -152,7 +240,7 @@ class RequestExecutorService3 {
                 EsRejectedExecutionException rejected = new EsRejectedExecutionException(
                     format(
                         "Failed to enqueue task because the executor service [%s] has already shutdown",
-                        task.getRequestCreator().getModel().getInferenceEntityId()
+                        task.getRequestCreator().inferenceEntityId()
                     ),
                     true
                 );
@@ -171,7 +259,7 @@ class RequestExecutorService3 {
                 EsRejectedExecutionException rejected = new EsRejectedExecutionException(
                     format(
                         "Failed to execute task because the executor service [%s] queue is full",
-                        task.getRequestCreator().getModel().getInferenceEntityId()
+                        task.getRequestCreator().inferenceEntityId()
                     ),
                     false
                 );
@@ -273,7 +361,7 @@ class RequestExecutorService3 {
                     format(
                         "Executor service [%s] failed to execute request for inference endpoint id [%s]",
                         id,
-                        task.getRequestCreator().getModel().getInferenceEntityId()
+                        task.getRequestCreator().inferenceEntityId()
                     ),
                     e
                 );
@@ -306,7 +394,7 @@ class RequestExecutorService3 {
                     new EsRejectedExecutionException(
                         format(
                             "Failed to send request, queue service for inference entity [%s] has shutdown prior to executing request",
-                            task.getRequestCreator().getModel().getInferenceEntityId()
+                            task.getRequestCreator().inferenceEntityId()
                         ),
                         true
                     )
@@ -315,7 +403,7 @@ class RequestExecutorService3 {
                 logger.warn(
                     format(
                         "Failed to notify request for inference endpoint [%s] of rejection after queuing service shutdown",
-                        task.getRequestCreator().getModel().getInferenceEntityId()
+                        task.getRequestCreator().inferenceEntityId()
                     )
                 );
             }

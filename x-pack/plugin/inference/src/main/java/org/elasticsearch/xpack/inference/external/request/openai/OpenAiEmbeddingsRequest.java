@@ -14,7 +14,7 @@ import org.apache.http.entity.ByteArrayEntity;
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.xcontent.XContentType;
 import org.elasticsearch.xpack.inference.common.Truncator;
-import org.elasticsearch.xpack.inference.external.openai.OpenAiAccount;
+import org.elasticsearch.xpack.inference.external.openai.OpenAiAccount2;
 import org.elasticsearch.xpack.inference.external.request.HttpRequest;
 import org.elasticsearch.xpack.inference.external.request.Request;
 import org.elasticsearch.xpack.inference.services.openai.embeddings.OpenAiEmbeddingsModel;
@@ -31,44 +31,35 @@ import static org.elasticsearch.xpack.inference.external.request.openai.OpenAiUt
 public class OpenAiEmbeddingsRequest implements OpenAiRequest {
 
     private final Truncator truncator;
-    private final OpenAiAccount account;
+    private final Configuration configuration;
     private final Truncator.TruncationResult truncationResult;
-    private final URI uri;
-    private final OpenAiEmbeddingsModel model;
+    private final String inferenceEntityId;
 
     public OpenAiEmbeddingsRequest(
         Truncator truncator,
-        OpenAiAccount account,
+        Configuration configuration,
         Truncator.TruncationResult input,
-        OpenAiEmbeddingsModel model
+        String inferenceEntityId
     ) {
         this.truncator = Objects.requireNonNull(truncator);
-        this.account = Objects.requireNonNull(account);
+        this.configuration = Objects.requireNonNull(configuration);
         this.truncationResult = Objects.requireNonNull(input);
-        this.uri = buildUri(this.account.url(), "OpenAI", OpenAiEmbeddingsRequest::buildDefaultUri);
-        this.model = Objects.requireNonNull(model);
+        this.inferenceEntityId = Objects.requireNonNull(inferenceEntityId);
     }
 
     public HttpRequest createHttpRequest() {
-        HttpPost httpPost = new HttpPost(uri);
+        HttpPost httpPost = new HttpPost(getURI());
 
         ByteArrayEntity byteEntity = new ByteArrayEntity(
-            Strings.toString(
-                new OpenAiEmbeddingsRequestEntity(
-                    truncationResult.input(),
-                    model.getServiceSettings().modelId(),
-                    model.getTaskSettings().user(),
-                    model.getServiceSettings().dimensions(),
-                    model.getServiceSettings().dimensionsSetByUser()
-                )
-            ).getBytes(StandardCharsets.UTF_8)
+            Strings.toString(new OpenAiEmbeddingsRequestEntity(truncationResult.input(), configuration.entityConfiguration()))
+                .getBytes(StandardCharsets.UTF_8)
         );
         httpPost.setEntity(byteEntity);
 
         httpPost.setHeader(HttpHeaders.CONTENT_TYPE, XContentType.JSON.mediaType());
-        httpPost.setHeader(createAuthBearerHeader(account.apiKey()));
+        httpPost.setHeader(createAuthBearerHeader(configuration.account().apiKey()));
 
-        var org = account.organizationId();
+        var org = configuration.account().organizationId();
         if (org != null) {
             httpPost.setHeader(createOrgHeader(org));
         }
@@ -78,19 +69,19 @@ public class OpenAiEmbeddingsRequest implements OpenAiRequest {
 
     @Override
     public String getInferenceEntityId() {
-        return model.getInferenceEntityId();
+        return inferenceEntityId;
     }
 
     @Override
     public URI getURI() {
-        return uri;
+        return configuration.account().uri();
     }
 
     @Override
     public Request truncate() {
         var truncatedInput = truncator.truncate(truncationResult.input());
 
-        return new OpenAiEmbeddingsRequest(truncator, account, truncatedInput, model);
+        return new OpenAiEmbeddingsRequest(truncator, configuration, truncatedInput, inferenceEntityId);
     }
 
     @Override
@@ -98,11 +89,26 @@ public class OpenAiEmbeddingsRequest implements OpenAiRequest {
         return truncationResult.truncated().clone();
     }
 
-    // default for testing
-    static URI buildDefaultUri() throws URISyntaxException {
+    public static URI buildDefaultUri() throws URISyntaxException {
         return new URIBuilder().setScheme("https")
             .setHost(OpenAiUtils.HOST)
             .setPathSegments(OpenAiUtils.VERSION_1, OpenAiUtils.EMBEDDINGS_PATH)
             .build();
+    }
+
+    public record Configuration(OpenAiAccount2 account, OpenAiEmbeddingsRequestEntity.Configuration entityConfiguration) {
+        public static Configuration of(OpenAiEmbeddingsModel model) {
+            var uri = buildUri(model.getServiceSettings().uri(), "OpenAI", OpenAiEmbeddingsRequest::buildDefaultUri);
+
+            return new Configuration(
+                new OpenAiAccount2(uri, model.getServiceSettings().organizationId(), model.getSecretSettings().apiKey()),
+                OpenAiEmbeddingsRequestEntity.Configuration.of(model)
+            );
+        }
+
+        public Configuration {
+            Objects.requireNonNull(account);
+            Objects.requireNonNull(entityConfiguration);
+        }
     }
 }
