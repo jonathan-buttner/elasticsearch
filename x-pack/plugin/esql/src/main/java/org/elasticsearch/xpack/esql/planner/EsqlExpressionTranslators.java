@@ -12,7 +12,6 @@ import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.common.lucene.BytesRefs;
 import org.elasticsearch.common.time.DateFormatter;
 import org.elasticsearch.geometry.Geometry;
-import org.elasticsearch.search.DocValueFormat;
 import org.elasticsearch.xpack.esql.evaluator.predicate.operator.comparison.Equals;
 import org.elasticsearch.xpack.esql.evaluator.predicate.operator.comparison.GreaterThan;
 import org.elasticsearch.xpack.esql.evaluator.predicate.operator.comparison.GreaterThanOrEqual;
@@ -57,6 +56,10 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
 
+import static org.elasticsearch.xpack.esql.type.EsqlDataTypeConverter.DEFAULT_DATE_TIME_FORMATTER;
+import static org.elasticsearch.xpack.esql.type.EsqlDataTypeConverter.HOUR_MINUTE_SECOND;
+import static org.elasticsearch.xpack.esql.type.EsqlDataTypeConverter.ipToString;
+import static org.elasticsearch.xpack.esql.type.EsqlDataTypeConverter.versionToString;
 import static org.elasticsearch.xpack.ql.type.DataTypes.IP;
 import static org.elasticsearch.xpack.ql.type.DataTypes.UNSIGNED_LONG;
 import static org.elasticsearch.xpack.ql.type.DataTypes.VERSION;
@@ -177,26 +180,26 @@ public final class EsqlExpressionTranslators {
             if (value instanceof ZonedDateTime || value instanceof OffsetTime) {
                 DateFormatter formatter;
                 if (value instanceof ZonedDateTime) {
-                    formatter = DateFormatter.forPattern("strict_date_optional_time_nanos");
+                    formatter = DEFAULT_DATE_TIME_FORMATTER;
                     // RangeQueryBuilder accepts an Object as its parameter, but it will call .toString() on the ZonedDateTime instance
                     // which can have a slightly different format depending on the ZoneId used to create the ZonedDateTime
                     // Since RangeQueryBuilder can handle date as String as well, we'll format it as String and provide the format as well.
                     value = formatter.format((ZonedDateTime) value);
                 } else {
-                    formatter = DateFormatter.forPattern("strict_hour_minute_second_fraction");
+                    formatter = HOUR_MINUTE_SECOND;
                     value = formatter.format((OffsetTime) value);
                 }
                 format = formatter.pattern();
                 isDateLiteralComparison = true;
             } else if (attribute.dataType() == IP && value instanceof BytesRef bytesRef) {
-                value = DocValueFormat.IP.format(bytesRef);
+                value = ipToString(bytesRef);
             } else if (attribute.dataType() == VERSION) {
                 // VersionStringFieldMapper#indexedValueForSearch() only accepts as input String or BytesRef with the String (i.e. not
                 // encoded) representation of the version as it'll do the encoding itself.
                 if (value instanceof BytesRef bytesRef) {
-                    value = new Version(bytesRef).toString();
+                    value = versionToString(bytesRef);
                 } else if (value instanceof Version version) {
-                    value = version.toString();
+                    value = versionToString(version);
                 }
             } else if (attribute.dataType() == UNSIGNED_LONG && value instanceof Long ul) {
                 value = unsignedLongAsNumber(ul);
