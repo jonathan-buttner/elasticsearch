@@ -40,7 +40,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static org.elasticsearch.core.Strings.format;
 import static org.elasticsearch.xpack.inference.InferencePlugin.UTILITY_THREAD_POOL_NAME;
 
-class RequestExecutorService3 {
+class RequestExecutorService4 {
 
     private static final AdjustableCapacityBlockingQueue.QueueCreator<RejectableTask> QUEUE_CREATOR =
         new AdjustableCapacityBlockingQueue.QueueCreator<>() {
@@ -65,7 +65,7 @@ class RequestExecutorService3 {
     private static final TimeValue DEFAULT_CLEANUP_INTERVAL = TimeValue.timeValueDays(10);
     private static final Duration DEFAULT_STALE_DURATION = Duration.ofDays(10);
 
-    private static final Logger logger = LogManager.getLogger(RequestExecutorService3.class);
+    private static final Logger logger = LogManager.getLogger(RequestExecutorService4.class);
 
     private final ConcurrentMap<Object, RateLimitingEndpointHandler> inferenceEndpoints = new ConcurrentHashMap<>();
     private final ThreadPool threadPool;
@@ -75,11 +75,11 @@ class RequestExecutorService3 {
     private final Duration staleEndpointDuration;
     private final Clock clock;
 
-    RequestExecutorService3(ThreadPool threadPool, RequestExecutorServiceSettings settings, SingleRequestManager requestManager) {
+    RequestExecutorService4(ThreadPool threadPool, RequestExecutorServiceSettings settings, SingleRequestManager requestManager) {
         this(threadPool, settings, requestManager, DEFAULT_CLEANUP_INTERVAL, DEFAULT_STALE_DURATION, Clock.systemUTC());
     }
 
-    RequestExecutorService3(
+    RequestExecutorService4(
         ThreadPool threadPool,
         RequestExecutorServiceSettings settings,
         SingleRequestManager requestManager,
@@ -271,34 +271,22 @@ class RequestExecutorService3 {
             // we peek and when we attempt to acquire the semaphore here. We'll handle that by peeking while attempt to dequeue
             if (queue.peek() != null && threadRunning.tryAcquire()) {
                 // Now that we have the exclusive lock, check again to see if we have work to do
-                if (queue.peek() != null) {
-                    try {
-                        waitGroup.add();
-                        threadPool.executor(UTILITY_THREAD_POOL_NAME).execute(this::handleSingleRequest);
-                    } catch (Exception e) {
-                        logger.warn(Strings.format("Executor service [%s] failed to create a thread to handle request", id));
-                        threadRunning.release();
-                        waitGroup.done();
-                    }
-                } else {
-                    // Someone completed the work between when we checked and got the lock so we'll just finish
-                    threadRunning.release();
-                }
+                handleSingleRequest();
             }
         }
 
         private void scheduleRequest(Runnable executableRequest) {
             Runnable toRun = () -> {
                 executableRequest.run();
-                // if this is the second to last request in the queue and we don't get anymore requests
-                // then we need to check to see if there is still more tasks to complete
+                // If all the requests have been queued up and no more will be received we need to check for more work
+                // because the enqueuing logic will not happen anymore that would normally trigger executing the request
                 onFinishExecutingRequest();
             };
 
             var timeDelay = rateLimiter.reserve(1);
 
             try {
-                // TODO waitGroup.add()
+                waitGroup.add();
                 if (shouldExecuteImmediately(timeDelay)) {
                     threadPool.executor(UTILITY_THREAD_POOL_NAME).execute(toRun);
                 } else {
@@ -323,7 +311,6 @@ class RequestExecutorService3 {
             try {
                 checkForTask();
             } finally {
-                // TODO maybe we don't need this here?
                 waitGroup.done();
             }
         }
@@ -346,14 +333,11 @@ class RequestExecutorService3 {
                 if (isShutdown()) {
                     notifyRequestsOfShutdown();
                 }
-                waitGroup.done();
             }
         }
 
         private void executeTask(RejectableTask task) {
             try {
-                // TODO move the waitGroup.add() to the scheduleRequest method
-                waitGroup.add();
                 requestManager.execute(task, this::scheduleRequest);
             } catch (Exception e) {
                 logger.warn(
@@ -364,7 +348,8 @@ class RequestExecutorService3 {
                     ),
                     e
                 );
-                handleFailureWhileInCriticalSection();
+                threadRunning.release();
+                checkForTask();
             }
         }
 

@@ -20,7 +20,6 @@ import org.elasticsearch.threadpool.Scheduler;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.xpack.inference.common.AdjustableCapacityBlockingQueue;
 import org.elasticsearch.xpack.inference.common.RateLimiter;
-import org.elasticsearch.xpack.inference.common.WaitGroup;
 import org.elasticsearch.xpack.inference.external.ratelimit.RateLimitSettings;
 
 import java.time.Clock;
@@ -32,15 +31,15 @@ import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.elasticsearch.core.Strings.format;
 import static org.elasticsearch.xpack.inference.InferencePlugin.UTILITY_THREAD_POOL_NAME;
 
-class RequestExecutorService3 {
+class RequestExecutorService5 {
 
     private static final AdjustableCapacityBlockingQueue.QueueCreator<RejectableTask> QUEUE_CREATOR =
         new AdjustableCapacityBlockingQueue.QueueCreator<>() {
@@ -65,22 +64,42 @@ class RequestExecutorService3 {
     private static final TimeValue DEFAULT_CLEANUP_INTERVAL = TimeValue.timeValueDays(10);
     private static final Duration DEFAULT_STALE_DURATION = Duration.ofDays(10);
 
-    private static final Logger logger = LogManager.getLogger(RequestExecutorService3.class);
+    private static final Logger logger = LogManager.getLogger(RequestExecutorService5.class);
 
     private final ConcurrentMap<Object, RateLimitingEndpointHandler> inferenceEndpoints = new ConcurrentHashMap<>();
     private final ThreadPool threadPool;
+    private final CountDownLatch startupLatch;
+    private final CountDownLatch terminationLatch = new CountDownLatch(1);
     private final SingleRequestManager requestManager;
     private final RequestExecutorServiceSettings settings;
     private final TimeValue cleanUpInterval;
     private final Duration staleEndpointDuration;
     private final Clock clock;
+    private final AtomicBoolean shutdown = new AtomicBoolean(false);
+    private final AdjustableCapacityBlockingQueue.QueueCreator<RejectableTask> queueCreator;
 
-    RequestExecutorService3(ThreadPool threadPool, RequestExecutorServiceSettings settings, SingleRequestManager requestManager) {
-        this(threadPool, settings, requestManager, DEFAULT_CLEANUP_INTERVAL, DEFAULT_STALE_DURATION, Clock.systemUTC());
+    RequestExecutorService5(
+        ThreadPool threadPool,
+        @Nullable CountDownLatch startupLatch,
+        RequestExecutorServiceSettings settings,
+        SingleRequestManager requestManager
+    ) {
+        this(
+            threadPool,
+            QUEUE_CREATOR,
+            startupLatch,
+            settings,
+            requestManager,
+            DEFAULT_CLEANUP_INTERVAL,
+            DEFAULT_STALE_DURATION,
+            Clock.systemUTC()
+        );
     }
 
-    RequestExecutorService3(
+    RequestExecutorService5(
         ThreadPool threadPool,
+        AdjustableCapacityBlockingQueue.QueueCreator<RejectableTask> queueCreator,
+        @Nullable CountDownLatch startupLatch,
         RequestExecutorServiceSettings settings,
         SingleRequestManager requestManager,
         TimeValue cleanUpInterval,
@@ -88,11 +107,79 @@ class RequestExecutorService3 {
         Clock clock
     ) {
         this.threadPool = Objects.requireNonNull(threadPool);
+        this.queueCreator = Objects.requireNonNull(queueCreator);
+        this.startupLatch = startupLatch;
         this.requestManager = Objects.requireNonNull(requestManager);
         this.settings = Objects.requireNonNull(settings);
         this.cleanUpInterval = Objects.requireNonNull(cleanUpInterval);
         this.staleEndpointDuration = Objects.requireNonNull(staleEndpointDuration);
         this.clock = Objects.requireNonNull(clock);
+    }
+
+    public void shutdown() {
+        if (shutdown.compareAndSet(false, true)) {
+            for (var endpoint : inferenceEndpoints.values()) {
+                endpoint.shutdown();
+            }
+        }
+    }
+
+    public boolean isShutdown() {
+        return shutdown.get();
+    }
+
+    public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
+        return terminationLatch.await(timeout, unit);
+    }
+
+    public boolean isTerminated() {
+        return terminationLatch.getCount() == 0;
+    }
+
+    public int queueSize() {
+        return inferenceEndpoints.values().stream().mapToInt(RateLimitingEndpointHandler::queueSize).sum();
+    }
+
+    public void start() {
+        try {
+            signalStartInitiated();
+
+            while (isShutdown() == false) {
+                handleTasks();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            shutdown();
+            notifyRequestsOfShutdown();
+            terminationLatch.countDown();
+        }
+    }
+
+    private void signalStartInitiated() {
+        if (startupLatch != null) {
+            startupLatch.countDown();
+        }
+    }
+
+    private void handleTasks() throws InterruptedException {
+        boolean handledAtLeastOneTask = false;
+        for (var endpoint : inferenceEndpoints.values()) {
+            handledAtLeastOneTask |= endpoint.executeEnqueuedTask();
+        }
+
+        if (handledAtLeastOneTask == false) {
+            // TODO make this configurable
+            Thread.sleep(50);
+        }
+    }
+
+    private void notifyRequestsOfShutdown() {
+        assert isShutdown() : "Requests should only be notified if the executor is shutting down";
+
+        for (var endpoint : inferenceEndpoints.values()) {
+            endpoint.notifyRequestsOfShutdown();
+        }
     }
 
     /**
@@ -125,8 +212,7 @@ class RequestExecutorService3 {
             requestCreator.requestConfiguration(),
             key -> new RateLimitingEndpointHandler(
                 Integer.toString(requestCreator.requestConfiguration().hashCode()),
-                threadPool,
-                QUEUE_CREATOR,
+                queueCreator,
                 settings,
                 requestManager,
                 clock,
@@ -161,10 +247,7 @@ class RequestExecutorService3 {
         private static final Logger logger = LogManager.getLogger(RateLimitingEndpointHandler.class);
 
         private final AdjustableCapacityBlockingQueue<RejectableTask> queue;
-        private final Semaphore threadRunning = new Semaphore(1);
         private final AtomicBoolean shutdown = new AtomicBoolean();
-        private final WaitGroup waitGroup = new WaitGroup();
-        private final ThreadPool threadPool;
         private final SingleRequestManager requestManager;
         private final String id;
         private Instant timeOfLastEnqueue;
@@ -173,7 +256,6 @@ class RequestExecutorService3 {
 
         RateLimitingEndpointHandler(
             String id,
-            ThreadPool threadPool,
             AdjustableCapacityBlockingQueue.QueueCreator<RejectableTask> createQueue,
             RequestExecutorServiceSettings settings,
             SingleRequestManager requestManager,
@@ -182,7 +264,6 @@ class RequestExecutorService3 {
         ) {
             this.id = Objects.requireNonNull(id);
             this.queue = new AdjustableCapacityBlockingQueue<>(createQueue, settings.getQueueCapacity());
-            this.threadPool = Objects.requireNonNull(threadPool);
             this.requestManager = Objects.requireNonNull(requestManager);
             this.clock = Objects.requireNonNull(clock);
 
@@ -207,14 +288,6 @@ class RequestExecutorService3 {
             return queue.size();
         }
 
-        public boolean isTerminated() {
-            return waitGroup.isTerminated();
-        }
-
-        public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
-            return waitGroup.awaitTermination(timeout, unit);
-        }
-
         public void shutdown() {
             shutdown.set(true);
         }
@@ -225,6 +298,22 @@ class RequestExecutorService3 {
 
         public Instant timeOfLastEnqueue() {
             return timeOfLastEnqueue;
+        }
+
+        public synchronized boolean executeEnqueuedTask() {
+            var timeBeforeAvailableToken = rateLimiter.timeToReserve(1);
+            var task = queue.poll();
+
+            if (shouldExecuteImmediately(timeBeforeAvailableToken) == false || task == null) {
+                return false;
+            }
+
+            executeTask(task);
+            return true;
+        }
+
+        private static boolean shouldExecuteImmediately(TimeValue delay) {
+            return delay.duration() == 0;
         }
 
         public void enqueue(RequestTask task) {
@@ -243,10 +332,6 @@ class RequestExecutorService3 {
                 return;
             }
 
-            // If we aren't shutting down then lets add the request to the queue, having the read lock ensures that the task will be
-            // picked up by a thread that is already executing tasks or one that we'll start later
-            // If we don't have the read lock, it'd be possible that we add an item to the queue but a thread was in the process of
-            // stopping and missed the new task and a new thread wouldn't get started
             var addedToQueue = queue.offer(task);
 
             if (addedToQueue == false) {
@@ -261,100 +346,12 @@ class RequestExecutorService3 {
                 task.onRejection(rejected);
             } else if (isShutdown()) {
                 notifyRequestsOfShutdown();
-            } else {
-                checkForTask();
-            }
-        }
-
-        private void checkForTask() {
-            // There is a possibility that a request could come in, acquire the semaphore, and complete the task between when
-            // we peek and when we attempt to acquire the semaphore here. We'll handle that by peeking while attempt to dequeue
-            if (queue.peek() != null && threadRunning.tryAcquire()) {
-                // Now that we have the exclusive lock, check again to see if we have work to do
-                if (queue.peek() != null) {
-                    try {
-                        waitGroup.add();
-                        threadPool.executor(UTILITY_THREAD_POOL_NAME).execute(this::handleSingleRequest);
-                    } catch (Exception e) {
-                        logger.warn(Strings.format("Executor service [%s] failed to create a thread to handle request", id));
-                        threadRunning.release();
-                        waitGroup.done();
-                    }
-                } else {
-                    // Someone completed the work between when we checked and got the lock so we'll just finish
-                    threadRunning.release();
-                }
-            }
-        }
-
-        private void scheduleRequest(Runnable executableRequest) {
-            Runnable toRun = () -> {
-                executableRequest.run();
-                // if this is the second to last request in the queue and we don't get anymore requests
-                // then we need to check to see if there is still more tasks to complete
-                onFinishExecutingRequest();
-            };
-
-            var timeDelay = rateLimiter.reserve(1);
-
-            try {
-                // TODO waitGroup.add()
-                if (shouldExecuteImmediately(timeDelay)) {
-                    threadPool.executor(UTILITY_THREAD_POOL_NAME).execute(toRun);
-                } else {
-                    threadPool.schedule(toRun, timeDelay, threadPool.executor(UTILITY_THREAD_POOL_NAME));
-                }
-            } catch (Exception e) {
-                logger.warn(Strings.format("Executor service [%s] failed to create a thread to handle request", id));
-                handleFailureWhileInCriticalSection();
-            }
-        }
-
-        private static boolean shouldExecuteImmediately(TimeValue delay) {
-            return delay.duration() == 0;
-        }
-
-        private void handleFailureWhileInCriticalSection() {
-            onFinishExecutingRequest();
-        }
-
-        private void onFinishExecutingRequest() {
-            threadRunning.release();
-            try {
-                checkForTask();
-            } finally {
-                // TODO maybe we don't need this here?
-                waitGroup.done();
-            }
-        }
-
-        private void handleSingleRequest() {
-            try {
-                var task = queue.poll();
-
-                // If we have a buggy race condition it might be possible for another thread to get the task
-                // Another scenario where the task would be null would be if we're instructed to shut down and some other
-                // thread drained the queue already
-                if (task != null) {
-                    // This could schedule a thread execution in the future, if the request needs to be rate limited
-                    executeTask(task);
-                } else {
-                    // We don't have a task to run, so release the thread lock
-                    threadRunning.release();
-                }
-            } finally {
-                if (isShutdown()) {
-                    notifyRequestsOfShutdown();
-                }
-                waitGroup.done();
             }
         }
 
         private void executeTask(RejectableTask task) {
             try {
-                // TODO move the waitGroup.add() to the scheduleRequest method
-                waitGroup.add();
-                requestManager.execute(task, this::scheduleRequest);
+                requestManager.execute(task);
             } catch (Exception e) {
                 logger.warn(
                     format(
@@ -364,11 +361,10 @@ class RequestExecutorService3 {
                     ),
                     e
                 );
-                handleFailureWhileInCriticalSection();
             }
         }
 
-        private synchronized void notifyRequestsOfShutdown() {
+        public synchronized void notifyRequestsOfShutdown() {
             assert isShutdown() : "Requests should only be notified if the executor is shutting down";
 
             try {

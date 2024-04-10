@@ -88,28 +88,48 @@ public class RateLimiter {
     }
 
     /**
+     * Returns the amount of time to wait for the tokens to become available but does not reserve them in advance.
+     * A caller will need to call {@link #reserve(int)} or {@link #acquire(int)} after this call.
+     * @param tokens the number of items of work that should be throttled, typically you'd pass a value of 1 here. Must be greater than 0.
+     * @return the amount of time to wait
+     */
+    public TimeValue timeToReserve(int tokens) {
+        validateTokenRequest(tokens);
+
+        double microsToWait;
+        accumulateTokens();
+        var accumulatedTokensToUse = Math.min(tokens, accumulatedTokens);
+        var additionalTokensRequired = tokens - accumulatedTokensToUse;
+        microsToWait = additionalTokensRequired / tokensPerMicros;
+
+        return new TimeValue((long) microsToWait, TimeUnit.MICROSECONDS);
+    }
+
+    private static void validateTokenRequest(int tokens) {
+        if (tokens <= 0) {
+            throw new IllegalArgumentException("Requested tokens must be positive");
+        }
+    }
+
+    /**
      * Returns the amount of time to wait for the tokens to become available.
-     * @param tokens the number of items of work that should be throttled, typically you'd pass a value of 1 here
+     * @param tokens the number of items of work that should be throttled, typically you'd pass a value of 1 here. Must be greater than 0.
      * @return the amount of time to wait
      */
     public TimeValue reserve(int tokens) {
         return new TimeValue(reserveInternal(tokens), TimeUnit.MICROSECONDS);
     }
 
-    private long reserveInternal(int tokens) {
-        if (tokens <= 0) {
-            throw new IllegalArgumentException("Requested tokens must be positive");
-        }
+    private synchronized long reserveInternal(int tokens) {
+        validateTokenRequest(tokens);
 
         double microsToWait;
-        synchronized (this) {
-            accumulateTokens();
-            var accumulatedTokensToUse = Math.min(tokens, accumulatedTokens);
-            var additionalTokensRequired = tokens - accumulatedTokensToUse;
-            microsToWait = additionalTokensRequired / tokensPerMicros;
-            accumulatedTokens -= accumulatedTokensToUse;
-            nextTokenAvailability = nextTokenAvailability.plus((long) microsToWait, ChronoUnit.MICROS);
-        }
+        accumulateTokens();
+        var accumulatedTokensToUse = Math.min(tokens, accumulatedTokens);
+        var additionalTokensRequired = tokens - accumulatedTokensToUse;
+        microsToWait = additionalTokensRequired / tokensPerMicros;
+        accumulatedTokens -= accumulatedTokensToUse;
+        nextTokenAvailability = nextTokenAvailability.plus((long) microsToWait, ChronoUnit.MICROS);
 
         return (long) microsToWait;
     }
@@ -123,7 +143,7 @@ public class RateLimiter {
         sleeper.sleep(reserveInternal(tokens));
     }
 
-    private void accumulateTokens() {
+    private synchronized void accumulateTokens() {
         var now = Instant.now(clock);
         if (now.isAfter(nextTokenAvailability)) {
             var elapsedTimeMicros = microsBetweenExact(nextTokenAvailability, now);

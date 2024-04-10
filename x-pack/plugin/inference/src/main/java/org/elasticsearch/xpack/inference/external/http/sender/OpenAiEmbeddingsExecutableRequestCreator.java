@@ -10,7 +10,6 @@ package org.elasticsearch.xpack.inference.external.http.sender;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.action.ActionListener;
-import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.inference.InferenceServiceResults;
 import org.elasticsearch.xpack.inference.common.Truncator;
 import org.elasticsearch.xpack.inference.external.http.retry.RequestSender;
@@ -49,8 +48,7 @@ public class OpenAiEmbeddingsExecutableRequestCreator implements ExecutableReque
         inferenceEntityId = model.getInferenceEntityId();
         configuration = OpenAiEmbeddingsRequest.Configuration.of(model);
         this.truncator = Objects.requireNonNull(truncator);
-        // TODO get this from the model
-        rateLimitSettings = new RateLimitSettings(TimeValue.timeValueMinutes(3000));
+        rateLimitSettings = model.getServiceSettings().rateLimitSettings();
     }
 
     @Override
@@ -78,6 +76,6 @@ public class OpenAiEmbeddingsExecutableRequestCreator implements ExecutableReque
 
     @Override
     public RateLimitSettings rateLimitSettings() {
-        return null;
+        return rateLimitSettings;
     }
 }

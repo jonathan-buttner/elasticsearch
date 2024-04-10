@@ -25,7 +25,6 @@ import static org.elasticsearch.xpack.inference.services.ServiceUtils.removeFrom
 
 public class RateLimitSettings implements Writeable, ToXContentFragment {
 
-    public static final String NAME = "rate_limit_settings";
     static final String FIELD_NAME = "rate_limit";
     static final String TOKENS_PER_TIME_UNIT_NAME = "tokens_per_time_unit";
 
