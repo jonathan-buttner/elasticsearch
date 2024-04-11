@@ -31,35 +31,36 @@ import static org.elasticsearch.xpack.inference.external.request.openai.OpenAiUt
 public class OpenAiEmbeddingsRequest implements OpenAiRequest {
 
     private final Truncator truncator;
-    private final Configuration configuration;
+    private final OpenAiEmbeddingsModel model;
     private final Truncator.TruncationResult truncationResult;
     private final String inferenceEntityId;
 
     public OpenAiEmbeddingsRequest(
         Truncator truncator,
-        Configuration configuration,
+        OpenAiEmbeddingsModel model,
         Truncator.TruncationResult input,
         String inferenceEntityId
     ) {
         this.truncator = Objects.requireNonNull(truncator);
-        this.configuration = Objects.requireNonNull(configuration);
+        this.model = Objects.requireNonNull(model);
         this.truncationResult = Objects.requireNonNull(input);
         this.inferenceEntityId = Objects.requireNonNull(inferenceEntityId);
     }
 
+    @Override
     public HttpRequest createHttpRequest() {
         HttpPost httpPost = new HttpPost(getURI());
 
         ByteArrayEntity byteEntity = new ByteArrayEntity(
-            Strings.toString(new OpenAiEmbeddingsRequestEntity(truncationResult.input(), configuration.entityConfiguration()))
-                .getBytes(StandardCharsets.UTF_8)
+            Strings.toString(new OpenAiEmbeddingsRequestEntity(truncationResult.input(), model)).getBytes(StandardCharsets.UTF_8)
         );
         httpPost.setEntity(byteEntity);
 
         httpPost.setHeader(HttpHeaders.CONTENT_TYPE, XContentType.JSON.mediaType());
-        httpPost.setHeader(createAuthBearerHeader(configuration.account().apiKey()));
+        var account = createAccount(model);
+        httpPost.setHeader(createAuthBearerHeader(account.apiKey()));
 
-        var org = configuration.account().organizationId();
+        var org = account.organizationId();
         if (org != null) {
             httpPost.setHeader(createOrgHeader(org));
         }
@@ -74,14 +75,14 @@ public class OpenAiEmbeddingsRequest implements OpenAiRequest {
 
     @Override
     public URI getURI() {
-        return configuration.account().uri();
+        return account.uri();
     }
 
     @Override
     public Request truncate() {
         var truncatedInput = truncator.truncate(truncationResult.input());
 
-        return new OpenAiEmbeddingsRequest(truncator, configuration, truncatedInput, inferenceEntityId);
+        return new OpenAiEmbeddingsRequest(truncator, model, truncatedInput, inferenceEntityId);
     }
 
     @Override
@@ -89,6 +90,14 @@ public class OpenAiEmbeddingsRequest implements OpenAiRequest {
         return truncationResult.truncated().clone();
     }
 
+    public static OpenAiAccount2 createAccount(OpenAiEmbeddingsModel model) {
+        Objects.requireNonNull(model);
+        var uri = buildUri(model.getServiceSettings().uri(), "OpenAI", OpenAiEmbeddingsRequest::buildDefaultUri);
+
+        return new OpenAiAccount2(uri, model.getServiceSettings().organizationId(), model.getSecretSettings().apiKey());
+    }
+
+    // TODO should this be public?
     public static URI buildDefaultUri() throws URISyntaxException {
         return new URIBuilder().setScheme("https")
             .setHost(OpenAiUtils.HOST)
@@ -96,19 +105,4 @@ public class OpenAiEmbeddingsRequest implements OpenAiRequest {
             .build();
     }
 
-    public record Configuration(OpenAiAccount2 account, OpenAiEmbeddingsRequestEntity.Configuration entityConfiguration) {
-        public static Configuration of(OpenAiEmbeddingsModel model) {
-            var uri = buildUri(model.getServiceSettings().uri(), "OpenAI", OpenAiEmbeddingsRequest::buildDefaultUri);
-
-            return new Configuration(
-                new OpenAiAccount2(uri, model.getServiceSettings().organizationId(), model.getSecretSettings().apiKey()),
-                OpenAiEmbeddingsRequestEntity.Configuration.of(model)
-            );
-        }
-
-        public Configuration {
-            Objects.requireNonNull(account);
-            Objects.requireNonNull(entityConfiguration);
-        }
-    }
 }

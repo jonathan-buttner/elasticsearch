@@ -27,19 +27,17 @@ public class SingleRequestManager {
             return;
         }
 
-        // TODO execute this one a separate thread via threadPool.execute()
-        inferenceRequest.getRequestCreator()
-            .create(
+        inferenceRequest.getRequestManager()
+            .execute(
                 inferenceRequest.getInput(),
                 requestSender,
                 inferenceRequest.getRequestCompletedFunction(),
                 inferenceRequest.getListener()
-            )
-            .run();
+            );
     }
 
     private static boolean isNoopRequest(InferenceRequest inferenceRequest) {
-        return inferenceRequest.getRequestCreator() == null
+        return inferenceRequest.getRequestManager() == null
             || inferenceRequest.getInput() == null
             || inferenceRequest.getListener() == null;
     }

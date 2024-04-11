@@ -49,6 +49,7 @@ public class OpenAiService extends SenderService {
 
     public OpenAiService(HttpRequestSender.Factory factory, ServiceComponents serviceComponents) {
         super(factory, serviceComponents);
+        // TODO instantiate a batching class here
     }
 
     @Override

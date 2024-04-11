@@ -26,12 +26,14 @@ public class OpenAiActionCreator implements OpenAiActionVisitor {
     public OpenAiActionCreator(Sender sender, ServiceComponents serviceComponents) {
         this.sender = Objects.requireNonNull(sender);
         this.serviceComponents = Objects.requireNonNull(serviceComponents);
+        // TODO create the batching class here?
     }
 
     @Override
     public ExecutableAction create(OpenAiEmbeddingsModel model, Map<String, Object> taskSettings) {
         var overriddenModel = OpenAiEmbeddingsModel.of(model, taskSettings);
 
+        // TODO pass the batching class here
         return new OpenAiEmbeddingsAction(sender, overriddenModel, serviceComponents);
     }
 

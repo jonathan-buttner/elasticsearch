@@ -12,4 +12,6 @@ import org.elasticsearch.core.Nullable;
 
 import java.net.URI;
 
-public record OpenAiAccount2(URI uri, @Nullable String organizationId, SecureString apiKey) {}
+public record OpenAiAccount2(URI uri, @Nullable String organizationId, SecureString apiKey) {
+
+}

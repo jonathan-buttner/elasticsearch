@@ -154,7 +154,7 @@ public class HttpRequestSender implements Sender {
      * @param listener a listener to handle the response
      */
     public void send(
-        ExecutableRequestCreator requestCreator,
+        RequestManager requestCreator,
         List<String> input,
         @Nullable TimeValue timeout,
         ActionListener<InferenceServiceResults> listener
@@ -180,7 +180,7 @@ public class HttpRequestSender implements Sender {
      * @param input the list of string input to send in the request
      * @param listener a listener to handle the response
      */
-    public void send(ExecutableRequestCreator requestCreator, List<String> input, ActionListener<InferenceServiceResults> listener) {
+    public void send(RequestManager requestCreator, List<String> input, ActionListener<InferenceServiceResults> listener) {
         assert started.get() : "call start() before sending a request";
         waitForStartToComplete();
         service.execute(requestCreator, input, maxRequestTimeout, listener);

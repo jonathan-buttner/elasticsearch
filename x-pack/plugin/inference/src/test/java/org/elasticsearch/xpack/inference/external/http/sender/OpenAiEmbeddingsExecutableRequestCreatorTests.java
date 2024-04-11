@@ -13,7 +13,7 @@ import org.elasticsearch.xpack.inference.common.TruncatorTests;
 import static org.elasticsearch.xpack.inference.services.openai.embeddings.OpenAiEmbeddingsModelTests.createModel;
 
 public class OpenAiEmbeddingsExecutableRequestCreatorTests {
-    public static OpenAiEmbeddingsExecutableRequestCreator makeCreator(
+    public static OpenAiEmbeddingsRequestManager makeCreator(
         String url,
         @Nullable String org,
         String apiKey,
@@ -22,10 +22,10 @@ public class OpenAiEmbeddingsExecutableRequestCreatorTests {
     ) {
         var model = createModel(url, org, apiKey, modelName, user);
 
-        return new OpenAiEmbeddingsExecutableRequestCreator(model, TruncatorTests.createTruncator());
+        return new OpenAiEmbeddingsRequestManager(model, TruncatorTests.createTruncator());
     }
 
-    public static OpenAiEmbeddingsExecutableRequestCreator makeCreator(
+    public static OpenAiEmbeddingsRequestManager makeCreator(
         String url,
         @Nullable String org,
         String apiKey,
@@ -35,6 +35,6 @@ public class OpenAiEmbeddingsExecutableRequestCreatorTests {
     ) {
         var model = createModel(url, org, apiKey, modelName, user, inferenceEntityId);
 
-        return new OpenAiEmbeddingsExecutableRequestCreator(model, TruncatorTests.createTruncator());
+        return new OpenAiEmbeddingsRequestManager(model, TruncatorTests.createTruncator());
     }
 }

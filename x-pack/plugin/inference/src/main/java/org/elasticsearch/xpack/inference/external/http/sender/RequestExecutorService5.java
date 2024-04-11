@@ -20,6 +20,7 @@ import org.elasticsearch.threadpool.Scheduler;
 import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.xpack.inference.common.AdjustableCapacityBlockingQueue;
 import org.elasticsearch.xpack.inference.common.RateLimiter;
+import org.elasticsearch.xpack.inference.external.http.retry.RequestSender;
 import org.elasticsearch.xpack.inference.external.ratelimit.RateLimitSettings;
 
 import java.time.Clock;
@@ -70,7 +71,7 @@ class RequestExecutorService5 {
     private final ThreadPool threadPool;
     private final CountDownLatch startupLatch;
     private final CountDownLatch terminationLatch = new CountDownLatch(1);
-    private final SingleRequestManager requestManager;
+    private final RequestSender requestSender;
     private final RequestExecutorServiceSettings settings;
     private final TimeValue cleanUpInterval;
     private final Duration staleEndpointDuration;
@@ -82,14 +83,14 @@ class RequestExecutorService5 {
         ThreadPool threadPool,
         @Nullable CountDownLatch startupLatch,
         RequestExecutorServiceSettings settings,
-        SingleRequestManager requestManager
+        RequestSender requestSender
     ) {
         this(
             threadPool,
             QUEUE_CREATOR,
             startupLatch,
             settings,
-            requestManager,
+            requestSender,
             DEFAULT_CLEANUP_INTERVAL,
             DEFAULT_STALE_DURATION,
             Clock.systemUTC()
@@ -101,7 +102,7 @@ class RequestExecutorService5 {
         AdjustableCapacityBlockingQueue.QueueCreator<RejectableTask> queueCreator,
         @Nullable CountDownLatch startupLatch,
         RequestExecutorServiceSettings settings,
-        SingleRequestManager requestManager,
+        RequestSender requestSender,
         TimeValue cleanUpInterval,
         Duration staleEndpointDuration,
         Clock clock
@@ -109,7 +110,7 @@ class RequestExecutorService5 {
         this.threadPool = Objects.requireNonNull(threadPool);
         this.queueCreator = Objects.requireNonNull(queueCreator);
         this.startupLatch = startupLatch;
-        this.requestManager = Objects.requireNonNull(requestManager);
+        this.requestSender = Objects.requireNonNull(requestSender);
         this.settings = Objects.requireNonNull(settings);
         this.cleanUpInterval = Objects.requireNonNull(cleanUpInterval);
         this.staleEndpointDuration = Objects.requireNonNull(staleEndpointDuration);
@@ -193,7 +194,7 @@ class RequestExecutorService5 {
      * @param listener an {@link ActionListener<InferenceServiceResults>} for the response or failure
      */
     public void execute(
-        ExecutableRequestCreator requestCreator,
+        RequestManager requestCreator,
         List<String> input,
         @Nullable TimeValue timeout,
         ActionListener<InferenceServiceResults> listener
@@ -209,12 +210,12 @@ class RequestExecutorService5 {
         );
 
         var endpoint = inferenceEndpoints.computeIfAbsent(
-            requestCreator.requestConfiguration(),
+            requestCreator.rateLimitGrouping(),
             key -> new RateLimitingEndpointHandler(
-                Integer.toString(requestCreator.requestConfiguration().hashCode()),
+                Integer.toString(requestCreator.rateLimitGrouping().hashCode()),
                 queueCreator,
                 settings,
-                requestManager,
+                requestSender,
                 clock,
                 requestCreator.rateLimitSettings()
             )
@@ -248,7 +249,7 @@ class RequestExecutorService5 {
 
         private final AdjustableCapacityBlockingQueue<RejectableTask> queue;
         private final AtomicBoolean shutdown = new AtomicBoolean();
-        private final SingleRequestManager requestManager;
+        private final RequestSender requestSender;
         private final String id;
         private Instant timeOfLastEnqueue;
         private final Clock clock;
@@ -258,13 +259,13 @@ class RequestExecutorService5 {
             String id,
             AdjustableCapacityBlockingQueue.QueueCreator<RejectableTask> createQueue,
             RequestExecutorServiceSettings settings,
-            SingleRequestManager requestManager,
+            RequestSender requestSender,
             Clock clock,
             RateLimitSettings rateLimitSettings
         ) {
             this.id = Objects.requireNonNull(id);
             this.queue = new AdjustableCapacityBlockingQueue<>(createQueue, settings.getQueueCapacity());
-            this.requestManager = Objects.requireNonNull(requestManager);
+            this.requestSender = Objects.requireNonNull(requestSender);
             this.clock = Objects.requireNonNull(clock);
 
             Objects.requireNonNull(rateLimitSettings);
@@ -323,7 +324,7 @@ class RequestExecutorService5 {
                 EsRejectedExecutionException rejected = new EsRejectedExecutionException(
                     format(
                         "Failed to enqueue task because the executor service [%s] has already shutdown",
-                        task.getRequestCreator().inferenceEntityId()
+                        task.getRequestManager().inferenceEntityId()
                     ),
                     true
                 );
@@ -338,7 +339,7 @@ class RequestExecutorService5 {
                 EsRejectedExecutionException rejected = new EsRejectedExecutionException(
                     format(
                         "Failed to execute task because the executor service [%s] queue is full",
-                        task.getRequestCreator().inferenceEntityId()
+                        task.getRequestManager().inferenceEntityId()
                     ),
                     false
                 );
@@ -351,17 +352,27 @@ class RequestExecutorService5 {
 
         private void executeTask(RejectableTask task) {
             try {
-                requestManager.execute(task);
+                if (isNoopRequest(task) || task.hasCompleted()) {
+                    return;
+                }
+
+                task.getRequestManager().execute(task.getInput(), requestSender, task.getRequestCompletedFunction(), task.getListener());
             } catch (Exception e) {
                 logger.warn(
                     format(
                         "Executor service [%s] failed to execute request for inference endpoint id [%s]",
                         id,
-                        task.getRequestCreator().inferenceEntityId()
+                        task.getRequestManager().inferenceEntityId()
                     ),
                     e
                 );
             }
+        }
+
+        private static boolean isNoopRequest(InferenceRequest inferenceRequest) {
+            return inferenceRequest.getRequestManager() == null
+                || inferenceRequest.getInput() == null
+                || inferenceRequest.getListener() == null;
         }
 
         public synchronized void notifyRequestsOfShutdown() {
@@ -389,7 +400,7 @@ class RequestExecutorService5 {
                     new EsRejectedExecutionException(
                         format(
                             "Failed to send request, queue service for inference entity [%s] has shutdown prior to executing request",
-                            task.getRequestCreator().inferenceEntityId()
+                            task.getRequestManager().inferenceEntityId()
                         ),
                         true
                     )
@@ -398,7 +409,7 @@ class RequestExecutorService5 {
                 logger.warn(
                     format(
                         "Failed to notify request for inference endpoint [%s] of rejection after queuing service shutdown",
-                        task.getRequestCreator().inferenceEntityId()
+                        task.getRequestManager().inferenceEntityId()
                     )
                 );
             }

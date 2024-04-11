@@ -24,9 +24,9 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
 
-public class OpenAiCompletionExecutableRequestCreator implements ExecutableRequestCreator {
+public class OpenAiCompletionRequestManager implements RequestManager {
 
-    private static final Logger logger = LogManager.getLogger(OpenAiCompletionExecutableRequestCreator.class);
+    private static final Logger logger = LogManager.getLogger(OpenAiCompletionRequestManager.class);
 
     private static final ResponseHandler HANDLER = createCompletionHandler();
 
@@ -34,7 +34,7 @@ public class OpenAiCompletionExecutableRequestCreator implements ExecutableReque
 
     private final OpenAiAccount account;
 
-    public OpenAiCompletionExecutableRequestCreator(OpenAiChatCompletionModel model) {
+    public OpenAiCompletionRequestManager(OpenAiChatCompletionModel model) {
         this.model = Objects.requireNonNull(model);
         this.account = new OpenAiAccount(
             this.model.getServiceSettings().uri(),

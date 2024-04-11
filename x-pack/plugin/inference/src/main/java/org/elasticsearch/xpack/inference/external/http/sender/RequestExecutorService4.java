@@ -106,7 +106,7 @@ class RequestExecutorService4 {
      * @param listener an {@link ActionListener<InferenceServiceResults>} for the response or failure
      */
     public void execute(
-        ExecutableRequestCreator requestCreator,
+        RequestManager requestCreator,
         List<String> input,
         @Nullable TimeValue timeout,
         ActionListener<InferenceServiceResults> listener
@@ -234,7 +234,7 @@ class RequestExecutorService4 {
                 EsRejectedExecutionException rejected = new EsRejectedExecutionException(
                     format(
                         "Failed to enqueue task because the executor service [%s] has already shutdown",
-                        task.getRequestCreator().inferenceEntityId()
+                        task.getRequestManager().inferenceEntityId()
                     ),
                     true
                 );
@@ -253,7 +253,7 @@ class RequestExecutorService4 {
                 EsRejectedExecutionException rejected = new EsRejectedExecutionException(
                     format(
                         "Failed to execute task because the executor service [%s] queue is full",
-                        task.getRequestCreator().inferenceEntityId()
+                        task.getRequestManager().inferenceEntityId()
                     ),
                     false
                 );
@@ -344,7 +344,7 @@ class RequestExecutorService4 {
                     format(
                         "Executor service [%s] failed to execute request for inference endpoint id [%s]",
                         id,
-                        task.getRequestCreator().inferenceEntityId()
+                        task.getRequestManager().inferenceEntityId()
                     ),
                     e
                 );
@@ -378,7 +378,7 @@ class RequestExecutorService4 {
                     new EsRejectedExecutionException(
                         format(
                             "Failed to send request, queue service for inference entity [%s] has shutdown prior to executing request",
-                            task.getRequestCreator().inferenceEntityId()
+                            task.getRequestManager().inferenceEntityId()
                         ),
                         true
                     )
@@ -387,7 +387,7 @@ class RequestExecutorService4 {
                 logger.warn(
                     format(
                         "Failed to notify request for inference endpoint [%s] of rejection after queuing service shutdown",
-                        task.getRequestCreator().inferenceEntityId()
+                        task.getRequestManager().inferenceEntityId()
                     )
                 );
             }

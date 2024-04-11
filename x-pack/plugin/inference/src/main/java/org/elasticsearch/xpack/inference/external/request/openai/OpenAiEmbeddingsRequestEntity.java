@@ -7,7 +7,6 @@
 
 package org.elasticsearch.xpack.inference.external.request.openai;
 
-import org.elasticsearch.core.Nullable;
 import org.elasticsearch.xcontent.ToXContentObject;
 import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xpack.inference.services.openai.embeddings.OpenAiEmbeddingsModel;
@@ -16,9 +15,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Objects;
 
-public record OpenAiEmbeddingsRequestEntity(List<String> input, OpenAiEmbeddingsRequestEntity.Configuration configuration)
-    implements
-        ToXContentObject {
+public record OpenAiEmbeddingsRequestEntity(List<String> input, OpenAiEmbeddingsModel model) implements ToXContentObject {
 
     private static final String INPUT_FIELD = "input";
     private static final String MODEL_FIELD = "model";
@@ -27,35 +24,28 @@ public record OpenAiEmbeddingsRequestEntity(List<String> input, OpenAiEmbeddings
 
     public OpenAiEmbeddingsRequestEntity {
         Objects.requireNonNull(input);
-        Objects.requireNonNull(configuration);
+        Objects.requireNonNull(model);
     }
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
         builder.startObject();
         builder.field(INPUT_FIELD, input);
-        builder.field(MODEL_FIELD, configuration.modelId);
+        builder.field(MODEL_FIELD, model.getServiceSettings().modelId());
 
-        if (configuration.user != null) {
-            builder.field(USER_FIELD, configuration.user);
+        if (model.getTaskSettings().user() != null) {
+            builder.field(USER_FIELD, model.getTaskSettings().user());
         }
 
-        if (configuration.dimensions != null) {
-            builder.field(DIMENSIONS_FIELD, configuration.dimensions);
+        if (dimensions() != null) {
+            builder.field(DIMENSIONS_FIELD, dimensions());
         }
 
         builder.endObject();
         return builder;
     }
 
-    public record Configuration(String modelId, @Nullable String user, @Nullable Integer dimensions) {
-        public static Configuration of(OpenAiEmbeddingsModel model) {
-            var dimensionsToUse = model.getServiceSettings().dimensionsSetByUser() ? model.getServiceSettings().dimensions() : null;
-            return new Configuration(model.getServiceSettings().modelId(), model.getTaskSettings().user(), dimensionsToUse);
-        }
-
-        public Configuration {
-            Objects.requireNonNull(modelId);
-        }
+    private Integer dimensions() {
+        return model.getServiceSettings().dimensionsSetByUser() ? model.getServiceSettings().dimensions() : null;
     }
 }

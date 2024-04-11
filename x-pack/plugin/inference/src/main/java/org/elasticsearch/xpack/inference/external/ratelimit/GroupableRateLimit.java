@@ -7,13 +7,7 @@
 
 package org.elasticsearch.xpack.inference.external.ratelimit;
 
-public interface RateLimitable {
-
-    /**
-     * Returns the settings defining how to initialize a {@link org.elasticsearch.xpack.inference.common.RateLimiter}
-     */
-    RateLimitSettings rateLimitSettings();
-
+public interface GroupableRateLimit {
     /**
      * Returns an object responsible for containing the all the fields that uniquely identify how a request will be rate limited.
      * In practice the class should contain things like api key, url, model, or any headers that would impact rate limiting.

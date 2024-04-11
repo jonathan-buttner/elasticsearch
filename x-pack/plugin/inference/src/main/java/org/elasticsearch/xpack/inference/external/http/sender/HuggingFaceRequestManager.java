@@ -25,15 +25,15 @@ import java.util.function.Supplier;
 
 import static org.elasticsearch.xpack.inference.common.Truncator.truncate;
 
-public class HuggingFaceExecutableRequestCreator implements ExecutableRequestCreator {
-    private static final Logger logger = LogManager.getLogger(HuggingFaceExecutableRequestCreator.class);
+public class HuggingFaceRequestManager implements RequestManager {
+    private static final Logger logger = LogManager.getLogger(HuggingFaceRequestManager.class);
 
     private final HuggingFaceModel model;
     private final HuggingFaceAccount account;
     private final ResponseHandler responseHandler;
     private final Truncator truncator;
 
-    public HuggingFaceExecutableRequestCreator(HuggingFaceModel model, ResponseHandler responseHandler, Truncator truncator) {
+    public HuggingFaceRequestManager(HuggingFaceModel model, ResponseHandler responseHandler, Truncator truncator) {
         this.model = Objects.requireNonNull(model);
         account = new HuggingFaceAccount(model.getUri(), model.getApiKey());
         this.responseHandler = Objects.requireNonNull(responseHandler);
@@ -41,7 +41,7 @@ public class HuggingFaceExecutableRequestCreator implements ExecutableRequestCre
     }
 
     @Override
-    public Runnable create(
+    public Runnable execute(
         List<String> input,
         RequestSender requestSender,
         Supplier<Boolean> hasRequestCompletedFunction,

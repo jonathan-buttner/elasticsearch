@@ -13,7 +13,7 @@ import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.inference.InferenceServiceResults;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.xpack.inference.external.action.ExecutableAction;
-import org.elasticsearch.xpack.inference.external.http.sender.OpenAiCompletionExecutableRequestCreator;
+import org.elasticsearch.xpack.inference.external.http.sender.OpenAiCompletionRequestManager;
 import org.elasticsearch.xpack.inference.external.http.sender.Sender;
 import org.elasticsearch.xpack.inference.services.ServiceComponents;
 import org.elasticsearch.xpack.inference.services.openai.completion.OpenAiChatCompletionModel;
@@ -28,7 +28,7 @@ import static org.elasticsearch.xpack.inference.external.action.ActionUtils.wrap
 public class OpenAiChatCompletionAction implements ExecutableAction {
 
     private final String errorMessage;
-    private final OpenAiCompletionExecutableRequestCreator requestCreator;
+    private final OpenAiCompletionRequestManager requestCreator;
 
     private final Sender sender;
 
@@ -36,7 +36,7 @@ public class OpenAiChatCompletionAction implements ExecutableAction {
         Objects.requireNonNull(serviceComponents);
         Objects.requireNonNull(model);
         this.sender = Objects.requireNonNull(sender);
-        this.requestCreator = new OpenAiCompletionExecutableRequestCreator(model);
+        this.requestCreator = new OpenAiCompletionRequestManager(model);
         this.errorMessage = constructFailedToSendRequestMessage(model.getServiceSettings().uri(), "OpenAI chat completions");
     }
 

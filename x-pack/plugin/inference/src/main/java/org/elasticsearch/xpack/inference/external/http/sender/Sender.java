@@ -19,11 +19,11 @@ public interface Sender extends Closeable {
     void start();
 
     void send(
-        ExecutableRequestCreator requestCreator,
+        RequestManager requestCreator,
         List<String> input,
         @Nullable TimeValue timeout,
         ActionListener<InferenceServiceResults> listener
     );
 
-    void send(ExecutableRequestCreator requestCreator, List<String> input, ActionListener<InferenceServiceResults> listener);
+    void send(RequestManager requestCreator, List<String> input, ActionListener<InferenceServiceResults> listener);
 }

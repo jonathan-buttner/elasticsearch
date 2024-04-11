@@ -24,8 +24,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
 
-public class CohereEmbeddingsExecutableRequestCreator implements ExecutableRequestCreator {
-    private static final Logger logger = LogManager.getLogger(CohereEmbeddingsExecutableRequestCreator.class);
+public class CohereEmbeddingsRequestManager implements RequestManager {
+    private static final Logger logger = LogManager.getLogger(CohereEmbeddingsRequestManager.class);
     private static final ResponseHandler HANDLER = createEmbeddingsHandler();
 
     private static ResponseHandler createEmbeddingsHandler() {
@@ -35,13 +35,13 @@ public class CohereEmbeddingsExecutableRequestCreator implements ExecutableReque
     private final CohereAccount account;
     private final CohereEmbeddingsModel model;
 
-    public CohereEmbeddingsExecutableRequestCreator(CohereEmbeddingsModel model) {
+    public CohereEmbeddingsRequestManager(CohereEmbeddingsModel model) {
         this.model = Objects.requireNonNull(model);
         account = new CohereAccount(this.model.getServiceSettings().getCommonSettings().getUri(), this.model.getSecretSettings().apiKey());
     }
 
     @Override
-    public Runnable create(
+    public Runnable execute(
         List<String> input,
         RequestSender requestSender,
         Supplier<Boolean> hasRequestCompletedFunction,

@@ -18,8 +18,8 @@ import java.util.function.Supplier;
 /**
  * A contract for constructing a {@link Runnable} to handle sending an inference request to a 3rd party service.
  */
-public interface ExecutableRequestCreator extends RateLimitable {
-    Runnable create(
+public interface RequestManager extends RateLimitable {
+    void execute(
         List<String> input,
         RequestSender requestSender,
         Supplier<Boolean> hasRequestCompletedFunction,
@@ -27,12 +27,4 @@ public interface ExecutableRequestCreator extends RateLimitable {
     );
 
     String inferenceEntityId();
-
-    /**
-     * Returns an object responsible for containing the all the fields that will make up the request
-     * except any input fields (fields that can be batched together). In practice the class should contain things like
-     * api key, url, model, or any headers that make the request unique. The class must implement hashcode such that
-     * these fields are taken into account.
-     */
-    Object requestConfiguration();
 }

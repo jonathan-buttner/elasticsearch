@@ -21,7 +21,6 @@ import org.elasticsearch.inference.SimilarityMeasure;
 import org.elasticsearch.xcontent.ToXContentObject;
 import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xpack.inference.external.ratelimit.RateLimitSettings;
-import org.elasticsearch.xpack.inference.external.ratelimit.RateLimitable;
 import org.elasticsearch.xpack.inference.services.ConfigurationParseContext;
 import org.elasticsearch.xpack.inference.services.ServiceUtils;
 
@@ -46,7 +45,7 @@ import static org.elasticsearch.xpack.inference.services.openai.OpenAiServiceFie
 /**
  * Defines the service settings for interacting with OpenAI's text embedding models.
  */
-public class OpenAiEmbeddingsServiceSettings implements ServiceSettings, RateLimitable {
+public class OpenAiEmbeddingsServiceSettings implements ServiceSettings {
 
     public static final String NAME = "openai_service_settings";
 
@@ -222,7 +221,6 @@ public class OpenAiEmbeddingsServiceSettings implements ServiceSettings, RateLim
         );
     }
 
-    @Override
     public RateLimitSettings rateLimitSettings() {
         return rateLimitSettings;
     }
