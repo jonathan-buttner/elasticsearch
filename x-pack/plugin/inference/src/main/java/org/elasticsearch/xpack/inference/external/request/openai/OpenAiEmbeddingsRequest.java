@@ -24,7 +24,6 @@ import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
-import static org.elasticsearch.xpack.inference.external.request.RequestUtils.buildUri;
 import static org.elasticsearch.xpack.inference.external.request.RequestUtils.createAuthBearerHeader;
 import static org.elasticsearch.xpack.inference.external.request.openai.OpenAiUtils.createOrgHeader;
 
@@ -33,18 +32,13 @@ public class OpenAiEmbeddingsRequest implements OpenAiRequest {
     private final Truncator truncator;
     private final OpenAiEmbeddingsModel model;
     private final Truncator.TruncationResult truncationResult;
-    private final String inferenceEntityId;
+    private final OpenAiAccount2 account;
 
-    public OpenAiEmbeddingsRequest(
-        Truncator truncator,
-        OpenAiEmbeddingsModel model,
-        Truncator.TruncationResult input,
-        String inferenceEntityId
-    ) {
+    public OpenAiEmbeddingsRequest(Truncator truncator, OpenAiEmbeddingsModel model, Truncator.TruncationResult input) {
         this.truncator = Objects.requireNonNull(truncator);
         this.model = Objects.requireNonNull(model);
         this.truncationResult = Objects.requireNonNull(input);
-        this.inferenceEntityId = Objects.requireNonNull(inferenceEntityId);
+        account = OpenAiAccount2.of(model, OpenAiEmbeddingsRequest::buildDefaultUri);
     }
 
     @Override
@@ -57,7 +51,6 @@ public class OpenAiEmbeddingsRequest implements OpenAiRequest {
         httpPost.setEntity(byteEntity);
 
         httpPost.setHeader(HttpHeaders.CONTENT_TYPE, XContentType.JSON.mediaType());
-        var account = createAccount(model);
         httpPost.setHeader(createAuthBearerHeader(account.apiKey()));
 
         var org = account.organizationId();
@@ -70,7 +63,7 @@ public class OpenAiEmbeddingsRequest implements OpenAiRequest {
 
     @Override
     public String getInferenceEntityId() {
-        return inferenceEntityId;
+        return model.getInferenceEntityId();
     }
 
     @Override
@@ -82,7 +75,7 @@ public class OpenAiEmbeddingsRequest implements OpenAiRequest {
     public Request truncate() {
         var truncatedInput = truncator.truncate(truncationResult.input());
 
-        return new OpenAiEmbeddingsRequest(truncator, model, truncatedInput, inferenceEntityId);
+        return new OpenAiEmbeddingsRequest(truncator, model, truncatedInput);
     }
 
     @Override
@@ -90,14 +83,6 @@ public class OpenAiEmbeddingsRequest implements OpenAiRequest {
         return truncationResult.truncated().clone();
     }
 
-    public static OpenAiAccount2 createAccount(OpenAiEmbeddingsModel model) {
-        Objects.requireNonNull(model);
-        var uri = buildUri(model.getServiceSettings().uri(), "OpenAI", OpenAiEmbeddingsRequest::buildDefaultUri);
-
-        return new OpenAiAccount2(uri, model.getServiceSettings().organizationId(), model.getSecretSettings().apiKey());
-    }
-
-    // TODO should this be public?
     public static URI buildDefaultUri() throws URISyntaxException {
         return new URIBuilder().setScheme("https")
             .setHost(OpenAiUtils.HOST)

@@ -55,7 +55,13 @@ public class OpenAiChatCompletionModel extends OpenAiModel {
         OpenAiChatCompletionTaskSettings taskSettings,
         @Nullable DefaultSecretSettings secrets
     ) {
-        super(new ModelConfigurations(modelId, taskType, service, serviceSettings, taskSettings), new ModelSecrets(secrets));
+        super(
+            new ModelConfigurations(modelId, taskType, service, serviceSettings, taskSettings),
+            new ModelSecrets(secrets),
+            serviceSettings.uri(),
+            serviceSettings.organizationId(),
+            secrets
+        );
     }
 
     private OpenAiChatCompletionModel(OpenAiChatCompletionModel originalModel, OpenAiChatCompletionTaskSettings taskSettings) {

@@ -19,6 +19,7 @@ import org.elasticsearch.inference.ServiceSettings;
 import org.elasticsearch.inference.SimilarityMeasure;
 import org.elasticsearch.xcontent.ToXContentObject;
 import org.elasticsearch.xcontent.XContentBuilder;
+import org.elasticsearch.xpack.inference.external.ratelimit.RateLimitSettings;
 
 import java.io.IOException;
 import java.net.URI;
@@ -35,7 +36,7 @@ import static org.elasticsearch.xpack.inference.services.ServiceUtils.extractReq
 import static org.elasticsearch.xpack.inference.services.ServiceUtils.extractSimilarity;
 import static org.elasticsearch.xpack.inference.services.ServiceUtils.removeAsType;
 
-public class HuggingFaceServiceSettings implements ServiceSettings {
+public class HuggingFaceServiceSettings implements ServiceSettings, HuggingFaceCommonServiceSettingFields {
     public static final String NAME = "hugging_face_service_settings";
 
     public static HuggingFaceServiceSettings fromMap(Map<String, Object> map) {
@@ -141,6 +142,7 @@ public class HuggingFaceServiceSettings implements ServiceSettings {
         }
     }
 
+    @Override
     public URI uri() {
         return uri;
     }
@@ -149,12 +151,20 @@ public class HuggingFaceServiceSettings implements ServiceSettings {
         return similarity;
     }
 
+    @Override
     public Integer dimensions() {
         return dimensions;
     }
 
+    @Override
     public Integer maxInputTokens() {
         return maxInputTokens;
+    }
+
+    @Override
+    public RateLimitSettings rateLimitSettings() {
+        // TODO
+        return null;
     }
 
     @Override

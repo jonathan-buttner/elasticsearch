@@ -39,7 +39,12 @@ public class HuggingFaceAction implements ExecutableAction {
         Objects.requireNonNull(serviceComponents);
         Objects.requireNonNull(requestType);
         this.sender = Objects.requireNonNull(sender);
-        requestCreator = new HuggingFaceRequestManager(model, responseHandler, serviceComponents.truncator());
+        requestCreator = HuggingFaceRequestManager.of(
+            model,
+            responseHandler,
+            serviceComponents.truncator(),
+            serviceComponents.threadPool()
+        );
         errorMessage = format(
             "Failed to send Hugging Face %s request from inference entity id [%s]",
             requestType,

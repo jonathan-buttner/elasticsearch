@@ -23,6 +23,7 @@ import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xpack.inference.external.ratelimit.RateLimitSettings;
 import org.elasticsearch.xpack.inference.services.ConfigurationParseContext;
 import org.elasticsearch.xpack.inference.services.ServiceUtils;
+import org.elasticsearch.xpack.inference.services.openai.OpenAiCommonServiceSettingFields;
 
 import java.io.IOException;
 import java.net.URI;
@@ -45,12 +46,13 @@ import static org.elasticsearch.xpack.inference.services.openai.OpenAiServiceFie
 /**
  * Defines the service settings for interacting with OpenAI's text embedding models.
  */
-public class OpenAiEmbeddingsServiceSettings implements ServiceSettings {
+public class OpenAiEmbeddingsServiceSettings implements ServiceSettings, OpenAiCommonServiceSettingFields {
 
     public static final String NAME = "openai_service_settings";
 
     static final String DIMENSIONS_SET_BY_USER = "dimensions_set_by_user";
 
+    // The default rate limit is 3000 requests per minute
     private static final RateLimitSettings DEFAULT_RATE_LIMIT_SETTINGS = new RateLimitSettings(TimeValue.timeValueMinutes(3000));
 
     public static OpenAiEmbeddingsServiceSettings fromMap(Map<String, Object> map, ConfigurationParseContext context) {
@@ -221,22 +223,27 @@ public class OpenAiEmbeddingsServiceSettings implements ServiceSettings {
         );
     }
 
+    @Override
     public RateLimitSettings rateLimitSettings() {
         return rateLimitSettings;
     }
 
+    @Override
     public URI uri() {
         return uri;
     }
 
+    @Override
     public String organizationId() {
         return organizationId;
     }
 
+    @Override
     public SimilarityMeasure similarity() {
         return similarity;
     }
 
+    @Override
     public Integer dimensions() {
         return dimensions;
     }
@@ -249,6 +256,7 @@ public class OpenAiEmbeddingsServiceSettings implements ServiceSettings {
         return maxInputTokens;
     }
 
+    @Override
     public String modelId() {
         return modelId;
     }

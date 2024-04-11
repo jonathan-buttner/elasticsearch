@@ -15,6 +15,8 @@ import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.inference.ServiceSettings;
 import org.elasticsearch.xcontent.ToXContentObject;
 import org.elasticsearch.xcontent.XContentBuilder;
+import org.elasticsearch.xpack.inference.external.ratelimit.RateLimitSettings;
+import org.elasticsearch.xpack.inference.services.huggingface.HuggingFaceCommonServiceSettingFields;
 
 import java.io.IOException;
 import java.net.URI;
@@ -25,7 +27,10 @@ import static org.elasticsearch.xpack.inference.services.ServiceFields.MAX_INPUT
 import static org.elasticsearch.xpack.inference.services.ServiceUtils.createUri;
 import static org.elasticsearch.xpack.inference.services.huggingface.HuggingFaceServiceSettings.extractUri;
 
-public record HuggingFaceElserServiceSettings(URI uri, Integer maxInputTokens) implements ServiceSettings {
+public record HuggingFaceElserServiceSettings(URI uri, Integer maxInputTokens)
+    implements
+        ServiceSettings,
+        HuggingFaceCommonServiceSettingFields {
 
     public static final String NAME = "hugging_face_elser_service_settings";
     private static final Integer ELSER_TOKEN_LIMIT = 512;
@@ -81,5 +86,11 @@ public record HuggingFaceElserServiceSettings(URI uri, Integer maxInputTokens) i
     @Override
     public void writeTo(StreamOutput out) throws IOException {
         out.writeString(uri.toString());
+    }
+
+    @Override
+    public RateLimitSettings rateLimitSettings() {
+        // TODO
+        return null;
     }
 }

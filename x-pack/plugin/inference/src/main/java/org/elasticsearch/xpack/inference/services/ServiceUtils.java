@@ -22,6 +22,7 @@ import org.elasticsearch.inference.TaskType;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.xpack.core.inference.results.TextEmbedding;
 import org.elasticsearch.xpack.core.inference.results.TextEmbeddingResults;
+import org.elasticsearch.xpack.inference.services.settings.ApiKeySecrets;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -365,4 +366,8 @@ public class ServiceUtils {
     }
 
     private static final String TEST_EMBEDDING_INPUT = "how big";
+
+    public static SecureString apiKey(@Nullable ApiKeySecrets secrets) {
+        return secrets == null ? null : secrets.apiKey();
+    }
 }

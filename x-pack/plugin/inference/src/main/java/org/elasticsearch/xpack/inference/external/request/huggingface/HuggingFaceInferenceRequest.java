@@ -31,16 +31,11 @@ public class HuggingFaceInferenceRequest implements Request {
     private final Truncator.TruncationResult truncationResult;
     private final HuggingFaceModel model;
 
-    public HuggingFaceInferenceRequest(
-        Truncator truncator,
-        HuggingFaceAccount account,
-        Truncator.TruncationResult input,
-        HuggingFaceModel model
-    ) {
+    public HuggingFaceInferenceRequest(Truncator truncator, Truncator.TruncationResult input, HuggingFaceModel model) {
         this.truncator = Objects.requireNonNull(truncator);
-        this.account = Objects.requireNonNull(account);
         this.truncationResult = Objects.requireNonNull(input);
         this.model = Objects.requireNonNull(model);
+        account = new HuggingFaceAccount(model.commonFields().uri(), model.apiKey());
     }
 
     public HttpRequest createHttpRequest() {
@@ -69,7 +64,7 @@ public class HuggingFaceInferenceRequest implements Request {
     public Request truncate() {
         var truncateResult = truncator.truncate(truncationResult.input());
 
-        return new HuggingFaceInferenceRequest(truncator, account, truncateResult, model);
+        return new HuggingFaceInferenceRequest(truncator, truncateResult, model);
     }
 
     @Override

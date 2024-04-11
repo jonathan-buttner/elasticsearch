@@ -8,24 +8,41 @@
 package org.elasticsearch.xpack.inference.services.huggingface;
 
 import org.elasticsearch.common.settings.SecureString;
+import org.elasticsearch.core.Nullable;
 import org.elasticsearch.inference.Model;
 import org.elasticsearch.inference.ModelConfigurations;
 import org.elasticsearch.inference.ModelSecrets;
 import org.elasticsearch.xpack.inference.external.action.ExecutableAction;
 import org.elasticsearch.xpack.inference.external.action.huggingface.HuggingFaceActionVisitor;
+import org.elasticsearch.xpack.inference.services.ServiceUtils;
+import org.elasticsearch.xpack.inference.services.settings.ApiKeySecrets;
 
-import java.net.URI;
+import java.util.Objects;
 
 public abstract class HuggingFaceModel extends Model {
-    public HuggingFaceModel(ModelConfigurations configurations, ModelSecrets secrets) {
+
+    private final HuggingFaceCommonServiceSettingFields commonFields;
+    private final SecureString apiKey;
+
+    public HuggingFaceModel(
+        ModelConfigurations configurations,
+        ModelSecrets secrets,
+        HuggingFaceCommonServiceSettingFields commonFields,
+        @Nullable ApiKeySecrets secretSettings
+    ) {
         super(configurations, secrets);
+
+        this.commonFields = Objects.requireNonNull(commonFields);
+        apiKey = ServiceUtils.apiKey(secretSettings);
     }
 
     public abstract ExecutableAction accept(HuggingFaceActionVisitor creator);
 
-    public abstract URI getUri();
+    public SecureString apiKey() {
+        return apiKey;
+    }
 
-    public abstract SecureString getApiKey();
-
-    public abstract Integer getTokenLimit();
+    public HuggingFaceCommonServiceSettingFields commonFields() {
+        return commonFields;
+    }
 }
