@@ -11,7 +11,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.inference.InferenceServiceResults;
-import org.elasticsearch.inference.Model;
 import org.elasticsearch.xpack.inference.external.cohere.CohereAccount;
 import org.elasticsearch.xpack.inference.external.cohere.CohereResponseHandler;
 import org.elasticsearch.xpack.inference.external.http.retry.RequestSender;
@@ -24,7 +23,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
 
-public class CohereEmbeddingsRequestManager implements RequestManager {
+public class CohereEmbeddingsRequestManager extends BaseRequestManager {
     private static final Logger logger = LogManager.getLogger(CohereEmbeddingsRequestManager.class);
     private static final ResponseHandler HANDLER = createEmbeddingsHandler();
 
@@ -41,7 +40,7 @@ public class CohereEmbeddingsRequestManager implements RequestManager {
     }
 
     @Override
-    public Runnable execute(
+    public void execute(
         List<String> input,
         RequestSender requestSender,
         Supplier<Boolean> hasRequestCompletedFunction,
@@ -50,10 +49,5 @@ public class CohereEmbeddingsRequestManager implements RequestManager {
         CohereEmbeddingsRequest request = new CohereEmbeddingsRequest(account, input, model);
 
         return new ExecutableInferenceRequest(requestSender, logger, request, HANDLER, hasRequestCompletedFunction, listener);
-    }
-
-    @Override
-    public Model getModel() {
-        return model;
     }
 }
