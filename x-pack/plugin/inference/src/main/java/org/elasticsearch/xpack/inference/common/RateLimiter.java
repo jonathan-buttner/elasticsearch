@@ -8,6 +8,7 @@
 package org.elasticsearch.xpack.inference.common;
 
 import org.elasticsearch.common.Strings;
+import org.elasticsearch.core.TimeValue;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -117,6 +118,11 @@ public class RateLimiter {
             accumulatedTokens = Math.min(accumulatedTokensLimit, accumulatedTokens + newTokens);
             nextTokenAvailability = now;
         }
+    }
+
+    // TODO remove
+    public TimeValue timeToReserve2(int tokens) {
+        return TimeValue.timeValueSeconds(1);
     }
 
     private static long microsBetweenExact(Instant start, Instant end) {
