@@ -155,6 +155,10 @@ public class AdjustableCapacityBlockingQueue<E> {
         return currentQueue.size() + prioritizedReadingQueue.size();
     }
 
+    public E poll2() {
+        return null;
+    }
+
     /**
      * The number of additional elements that his queue can accept without blocking.
      */
