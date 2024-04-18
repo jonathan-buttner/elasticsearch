@@ -15,7 +15,6 @@ import org.elasticsearch.common.ValidationException;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.core.Nullable;
-import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.inference.ModelConfigurations;
 import org.elasticsearch.inference.ServiceSettings;
 import org.elasticsearch.inference.SimilarityMeasure;
@@ -46,7 +45,8 @@ public class CohereServiceSettings implements ServiceSettings, CohereRateLimitSe
     public static final String MODEL_ID = "model_id";
     private static final Logger logger = LogManager.getLogger(CohereServiceSettings.class);
     // The rate limit defined here is pulled for the blog: https://txt.cohere.com/free-developer-tier-announcement/ for the production tier
-    private static final RateLimitSettings DEFAULT_RATE_LIMIT_SETTINGS = new RateLimitSettings(TimeValue.timeValueMinutes(10_000));
+    // 10K requests a minute
+    private static final RateLimitSettings DEFAULT_RATE_LIMIT_SETTINGS = new RateLimitSettings(10_000);
 
     public static CohereServiceSettings fromMap(Map<String, Object> map, ConfigurationParseContext context) {
         ValidationException validationException = new ValidationException();
@@ -117,7 +117,12 @@ public class CohereServiceSettings implements ServiceSettings, CohereRateLimitSe
         dimensions = in.readOptionalVInt();
         maxInputTokens = in.readOptionalVInt();
         modelId = in.readOptionalString();
-        rateLimitSettings = RateLimitSettings.of(in, DEFAULT_RATE_LIMIT_SETTINGS);
+
+        if (in.getTransportVersion().onOrAfter(TransportVersions.ML_INFERENCE_RATE_LIMIT_SETTINGS_ADDED)) {
+            rateLimitSettings = new RateLimitSettings(in);
+        } else {
+            rateLimitSettings = DEFAULT_RATE_LIMIT_SETTINGS;
+        }
     }
 
     // should only be used for testing, public because it's accessed outside of the package
@@ -206,7 +211,10 @@ public class CohereServiceSettings implements ServiceSettings, CohereRateLimitSe
         out.writeOptionalVInt(dimensions);
         out.writeOptionalVInt(maxInputTokens);
         out.writeOptionalString(modelId);
-        rateLimitSettings.writeTo(out);
+
+        if (out.getTransportVersion().onOrAfter(TransportVersions.ML_INFERENCE_RATE_LIMIT_SETTINGS_ADDED)) {
+            rateLimitSettings.writeTo(out);
+        }
     }
 
     @Override
