@@ -13,19 +13,21 @@ import org.elasticsearch.TransportVersions;
 import org.elasticsearch.action.ActionRequestValidationException;
 import org.elasticsearch.action.ActionResponse;
 import org.elasticsearch.action.ActionType;
+import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.collect.Iterators;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.xcontent.ChunkedToXContent;
 import org.elasticsearch.common.xcontent.ChunkedToXContentHelper;
 import org.elasticsearch.common.xcontent.ChunkedToXContentObject;
+import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.inference.InferenceResults;
 import org.elasticsearch.inference.InferenceServiceResults;
 import org.elasticsearch.inference.InputType;
 import org.elasticsearch.inference.TaskType;
+import org.elasticsearch.inference.UnifiedCompletionRequest;
 import org.elasticsearch.rest.RestStatus;
-import org.elasticsearch.xcontent.ObjectParser;
 import org.elasticsearch.xcontent.ParseField;
 import org.elasticsearch.xcontent.ToXContent;
 import org.elasticsearch.xcontent.XContentParser;
@@ -35,6 +37,7 @@ import org.elasticsearch.xpack.core.ml.inference.results.TextExpansionResults;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.List;
@@ -61,27 +64,80 @@ public class InferenceAction extends ActionType<InferenceAction.Response> {
         public static final ParseField QUERY = new ParseField("query");
         public static final ParseField TIMEOUT = new ParseField("timeout");
 
-        static final ObjectParser<Request.Builder, Void> PARSER = new ObjectParser<>(NAME, Request.Builder::new);
-        static {
-            PARSER.declareStringArray(Request.Builder::setInput, INPUT);
-            PARSER.declareObject(Request.Builder::setTaskSettings, (p, c) -> p.mapOrdered(), TASK_SETTINGS);
-            PARSER.declareString(Request.Builder::setQuery, QUERY);
-            PARSER.declareString(Builder::setInferenceTimeout, TIMEOUT);
-        }
-
+        // static final ObjectParser<Request.Builder, Void> PARSER = new ObjectParser<>(NAME, Request.Builder::new);
+        // static {
+        // PARSER.declareStringArray(Request.Builder::setInput, INPUT);
+        // PARSER.declareObject(Request.Builder::setTaskSettings, (p, c) -> p.mapOrdered(), TASK_SETTINGS);
+        // PARSER.declareString(Request.Builder::setQuery, QUERY);
+        // PARSER.declareString(Builder::setInferenceTimeout, TIMEOUT);
+        // }
         private static final EnumSet<InputType> validEnumsBeforeUnspecifiedAdded = EnumSet.of(InputType.INGEST, InputType.SEARCH);
         private static final EnumSet<InputType> validEnumsBeforeClassificationClusteringAdded = EnumSet.range(
             InputType.INGEST,
             InputType.UNSPECIFIED
         );
 
-        public static Builder parseRequest(String inferenceEntityId, TaskType taskType, XContentParser parser) throws IOException {
-            Request.Builder builder = PARSER.apply(parser, null);
+        public static Builder parseRequest2(String inferenceEntityId, TaskType taskType, XContentParser parser) {
+            Builder builder = null;
+            Exception inputRequestException = null;
+            try {
+                var inputRequest = InputInferenceRequest.PARSER.apply(parser, null);
+                builder = new Builder(inputRequest);
+            } catch (Exception e) {
+                inputRequestException = e;
+            }
+
+            Exception unifiedRequestException = null;
+            try {
+                var unifiedRequest = UnifiedCompletionRequest.PARSER.apply(parser, null);
+                builder = new Builder(unifiedRequest);
+            } catch (Exception e) {
+                unifiedRequestException = e;
+            }
+
+            if (builder == null) {
+                throw new ElasticsearchStatusException(
+                    parseExceptionMessage(inputRequestException, unifiedRequestException),
+                    RestStatus.BAD_REQUEST
+                );
+            }
+
             builder.setInferenceEntityId(inferenceEntityId);
             builder.setTaskType(taskType);
             // For rest requests we won't know what the input type is
             builder.setInputType(InputType.UNSPECIFIED);
             return builder;
+        }
+
+        private static String parseExceptionMessage(
+            @Nullable Exception inputRequestException,
+            @Nullable Exception unifiedRequestException
+        ) {
+            var message =
+                "Failed to parse request. please specify a well formed request with either the input field or the messages field.";
+
+            if (inputRequestException != null) {
+                // TODO figure out a good error message
+                message += Strings.format(" input style error: [%s]", inputRequestException.getMessage());
+            }
+
+            if (unifiedRequestException != null) {
+                // TODO figure out a good error message
+                message += Strings.format(" unified style error: [%s]", unifiedRequestException.getMessage());
+            }
+
+            return message;
+        }
+
+        public static Builder parseRequest(String inferenceEntityId, TaskType taskType, XContentParser parser) throws IOException {
+
+            // Request.Builder builder = PARSER.apply(parser, null);
+            // builder.setInferenceEntityId(inferenceEntityId);
+            // builder.setTaskType(taskType);
+            // // For rest requests we won't know what the input type is
+            // builder.setInputType(InputType.UNSPECIFIED);
+            // return builder;
+            return parseRequest2(inferenceEntityId, taskType, parser);
         }
 
         private final TaskType taskType;
@@ -92,6 +148,29 @@ public class InferenceAction extends ActionType<InferenceAction.Response> {
         private final InputType inputType;
         private final TimeValue inferenceTimeout;
         private final boolean stream;
+        private final UnifiedCompletionRequest unifiedRequest;
+
+        public Request(
+            TaskType taskType,
+            String inferenceEntityId,
+            String query,
+            List<String> input,
+            Map<String, Object> taskSettings,
+            InputType inputType,
+            TimeValue inferenceTimeout,
+            boolean stream,
+            @Nullable UnifiedCompletionRequest unifiedRequest
+        ) {
+            this.taskType = taskType;
+            this.inferenceEntityId = inferenceEntityId;
+            this.query = query;
+            this.input = input;
+            this.taskSettings = taskSettings;
+            this.inputType = inputType;
+            this.inferenceTimeout = inferenceTimeout;
+            this.stream = stream;
+            this.unifiedRequest = unifiedRequest;
+        }
 
         public Request(
             TaskType taskType,
@@ -103,14 +182,7 @@ public class InferenceAction extends ActionType<InferenceAction.Response> {
             TimeValue inferenceTimeout,
             boolean stream
         ) {
-            this.taskType = taskType;
-            this.inferenceEntityId = inferenceEntityId;
-            this.query = query;
-            this.input = input;
-            this.taskSettings = taskSettings;
-            this.inputType = inputType;
-            this.inferenceTimeout = inferenceTimeout;
-            this.stream = stream;
+            this(taskType, inferenceEntityId, query, input, taskSettings, inputType, inferenceTimeout, stream, null);
         }
 
         public Request(StreamInput in) throws IOException {
@@ -137,8 +209,18 @@ public class InferenceAction extends ActionType<InferenceAction.Response> {
                 this.inferenceTimeout = DEFAULT_TIMEOUT;
             }
 
+            if (in.getTransportVersion().onOrAfter(TransportVersions.ML_INFERENCE_ADDING_UNIFIED_TO_ACTION)) {
+                this.unifiedRequest = in.readOptionalWriteable(UnifiedCompletionRequest::new);
+            } else {
+                this.unifiedRequest = null;
+            }
+
             // streaming is not supported yet for transport traffic
             this.stream = false;
+        }
+
+        public UnifiedCompletionRequest getUnifiedRequest() {
+            return unifiedRequest;
         }
 
         public TaskType getTaskType() {
@@ -175,6 +257,25 @@ public class InferenceAction extends ActionType<InferenceAction.Response> {
 
         @Override
         public ActionRequestValidationException validate() {
+            if (input == null && unifiedRequest == null) {
+                var e = new ActionRequestValidationException();
+                e.addValidationError("Please specified either field [input] or [messages]");
+                return e;
+            }
+
+            var inputValidationResult = validateInputRequest();
+            var unifiedValidationResult = validateUnifiedRequest();
+
+            // If no validation errors then return null
+            if (inputValidationResult == null && unifiedValidationResult == null) {
+                return null;
+            } else {
+                // Otherwise return the validation error
+                return Objects.requireNonNullElse(inputValidationResult, unifiedValidationResult);
+            }
+        }
+
+        private ActionRequestValidationException validateInputRequest() {
             if (input == null) {
                 var e = new ActionRequestValidationException();
                 e.addValidationError("Field [input] cannot be null");
@@ -203,13 +304,39 @@ public class InferenceAction extends ActionType<InferenceAction.Response> {
             return null;
         }
 
+        private ActionRequestValidationException validateUnifiedRequest() {
+            if (unifiedRequest == null || unifiedRequest.messages() == null) {
+                var e = new ActionRequestValidationException();
+                e.addValidationError("Field [messages] cannot be null");
+                return e;
+            }
+
+            if (unifiedRequest.messages().isEmpty()) {
+                var e = new ActionRequestValidationException();
+                e.addValidationError("Field [messages] cannot be an empty array");
+                return e;
+            }
+
+            if (taskType.isAnyOrSame(TaskType.COMPLETION) == false) {
+                var e = new ActionRequestValidationException();
+                e.addValidationError("Field [taskType] must be [completion]");
+                return e;
+            }
+
+            return null;
+        }
+
         @Override
         public void writeTo(StreamOutput out) throws IOException {
             super.writeTo(out);
             taskType.writeTo(out);
             out.writeString(inferenceEntityId);
-            if (out.getTransportVersion().onOrAfter(TransportVersions.V_8_12_0)) {
-                out.writeStringCollection(input);
+            if (out.getTransportVersion().onOrAfter(TransportVersions.ML_INFERENCE_ADDING_UNIFIED_TO_ACTION)) {
+                out.writeOptionalStringCollection(input);
+            } else if (out.getTransportVersion().onOrAfter(TransportVersions.V_8_12_0)) {
+                // TODO how do we make a field that was required optional/nullable?
+                // in reality I don't think this will be an issue because the request isn't rerouted at the moment
+                out.writeStringCollection(Objects.requireNonNullElse(input, Collections.emptyList()));
             } else {
                 out.writeString(input.get(0));
             }
@@ -222,6 +349,10 @@ public class InferenceAction extends ActionType<InferenceAction.Response> {
             if (out.getTransportVersion().onOrAfter(TransportVersions.V_8_14_0)) {
                 out.writeOptionalString(query);
                 out.writeTimeValue(inferenceTimeout);
+            }
+
+            if (out.getTransportVersion().onOrAfter(TransportVersions.ML_INFERENCE_ADDING_UNIFIED_TO_ACTION)) {
+                out.writeOptionalWriteable(unifiedRequest);
             }
         }
 
@@ -249,16 +380,18 @@ public class InferenceAction extends ActionType<InferenceAction.Response> {
                 && Objects.equals(taskSettings, request.taskSettings)
                 && Objects.equals(inputType, request.inputType)
                 && Objects.equals(query, request.query)
-                && Objects.equals(inferenceTimeout, request.inferenceTimeout);
+                && Objects.equals(inferenceTimeout, request.inferenceTimeout)
+                && Objects.equals(unifiedRequest, request.unifiedRequest);
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(taskType, inferenceEntityId, input, taskSettings, inputType, query, inferenceTimeout);
+            return Objects.hash(taskType, inferenceEntityId, input, taskSettings, inputType, query, inferenceTimeout, unifiedRequest);
         }
 
         public static class Builder {
 
+            private UnifiedCompletionRequest unifiedCompletionRequest;
             private TaskType taskType;
             private String inferenceEntityId;
             private List<String> input;
@@ -268,7 +401,17 @@ public class InferenceAction extends ActionType<InferenceAction.Response> {
             private TimeValue timeout = DEFAULT_TIMEOUT;
             private boolean stream = false;
 
-            private Builder() {}
+            private Builder(InputInferenceRequest request) {
+                Objects.requireNonNull(request);
+
+                this.input = request.input();
+                this.query = request.query();
+                this.taskSettings = request.taskSettings();
+            }
+
+            private Builder(UnifiedCompletionRequest request) {
+                unifiedCompletionRequest = Objects.requireNonNull(request);
+            }
 
             public Builder setInferenceEntityId(String inferenceEntityId) {
                 this.inferenceEntityId = Objects.requireNonNull(inferenceEntityId);
@@ -280,23 +423,8 @@ public class InferenceAction extends ActionType<InferenceAction.Response> {
                 return this;
             }
 
-            public Builder setInput(List<String> input) {
-                this.input = input;
-                return this;
-            }
-
-            public Builder setQuery(String query) {
-                this.query = query;
-                return this;
-            }
-
             public Builder setInputType(InputType inputType) {
                 this.inputType = inputType;
-                return this;
-            }
-
-            public Builder setTaskSettings(Map<String, Object> taskSettings) {
-                this.taskSettings = taskSettings;
                 return this;
             }
 
@@ -315,7 +443,17 @@ public class InferenceAction extends ActionType<InferenceAction.Response> {
             }
 
             public Request build() {
-                return new Request(taskType, inferenceEntityId, query, input, taskSettings, inputType, timeout, stream);
+                return new Request(
+                    taskType,
+                    inferenceEntityId,
+                    query,
+                    input,
+                    taskSettings,
+                    inputType,
+                    timeout,
+                    stream,
+                    unifiedCompletionRequest
+                );
             }
         }
 
@@ -334,6 +472,10 @@ public class InferenceAction extends ActionType<InferenceAction.Response> {
                 + this.getInputType()
                 + ", timeout="
                 + this.getInferenceTimeout()
+                + ", stream="
+                + this.stream
+                + ", unifiedCompletionRequest="
+                + this.unifiedRequest
                 + ")";
         }
     }
