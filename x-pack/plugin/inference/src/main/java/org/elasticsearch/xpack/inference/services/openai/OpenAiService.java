@@ -30,6 +30,7 @@ import org.elasticsearch.inference.TaskType;
 import org.elasticsearch.inference.configuration.SettingsConfigurationDisplayType;
 import org.elasticsearch.inference.configuration.SettingsConfigurationFieldType;
 import org.elasticsearch.rest.RestStatus;
+import org.elasticsearch.xpack.inference.UnifiedCompletionFeature;
 import org.elasticsearch.xpack.inference.chunking.ChunkingSettingsBuilder;
 import org.elasticsearch.xpack.inference.chunking.EmbeddingRequestChunker;
 import org.elasticsearch.xpack.inference.external.action.SenderExecutableAction;
@@ -73,6 +74,12 @@ public class OpenAiService extends SenderService {
     public static final String NAME = "openai";
 
     private static final EnumSet<TaskType> supportedTaskTypes = EnumSet.of(TaskType.TEXT_EMBEDDING, TaskType.COMPLETION);
+
+    static {
+        if (UnifiedCompletionFeature.UNIFIED_COMPLETION_FEATURE_FLAG.isEnabled()) {
+            supportedTaskTypes.add(TaskType.CHAT_COMPLETION);
+        }
+    }
 
     public OpenAiService(HttpRequestSender.Factory factory, ServiceComponents serviceComponents) {
         super(factory, serviceComponents);
@@ -155,6 +162,8 @@ public class OpenAiService extends SenderService {
         String failureMessage,
         ConfigurationParseContext context
     ) {
+        validateTaskType(taskType, failureMessage);
+
         return switch (taskType) {
             case TEXT_EMBEDDING -> new OpenAiEmbeddingsModel(
                 inferenceEntityId,
@@ -166,7 +175,7 @@ public class OpenAiService extends SenderService {
                 secretSettings,
                 context
             );
-            case COMPLETION -> new OpenAiChatCompletionModel(
+            case COMPLETION, CHAT_COMPLETION -> new OpenAiChatCompletionModel(
                 inferenceEntityId,
                 taskType,
                 NAME,
@@ -177,6 +186,12 @@ public class OpenAiService extends SenderService {
             );
             default -> throw new ElasticsearchStatusException(failureMessage, RestStatus.BAD_REQUEST);
         };
+    }
+
+    private static void validateTaskType(TaskType taskType, String failureMessage) {
+        if (supportedTaskTypes.contains(taskType) == false) {
+            throw new ElasticsearchStatusException(failureMessage, RestStatus.BAD_REQUEST);
+        }
     }
 
     @Override

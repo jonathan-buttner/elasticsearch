@@ -31,6 +31,7 @@ public record StreamingUnifiedChatCompletionResults(Flow.Publisher<? extends Chu
         InferenceServiceResults {
 
     public static final String NAME = "chat_completion_chunk";
+    public static final String CHAT_COMPLETION_FIELD = "chat_completion";
     public static final String MODEL_FIELD = "model";
     public static final String OBJECT_FIELD = "object";
     public static final String USAGE_FIELD = "usage";
@@ -154,11 +155,15 @@ public record StreamingUnifiedChatCompletionResults(Flow.Publisher<? extends Chu
 
             return Iterators.concat(
                 ChunkedToXContentHelper.startObject(),
+
+                ChunkedToXContentHelper.startObject(CHAT_COMPLETION_FIELD),
                 ChunkedToXContentHelper.field(ID_FIELD, id),
                 choicesIterator,
                 ChunkedToXContentHelper.field(MODEL_FIELD, model),
                 ChunkedToXContentHelper.field(OBJECT_FIELD, object),
                 usageIterator,
+                ChunkedToXContentHelper.endObject(),
+
                 ChunkedToXContentHelper.endObject()
             );
         }

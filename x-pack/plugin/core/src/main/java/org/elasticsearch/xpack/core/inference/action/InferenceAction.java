@@ -64,20 +64,33 @@ public class InferenceAction extends ActionType<InferenceAction.Response> {
         public static final ParseField QUERY = new ParseField("query");
         public static final ParseField TIMEOUT = new ParseField("timeout");
 
-        // static final ObjectParser<Request.Builder, Void> PARSER = new ObjectParser<>(NAME, Request.Builder::new);
-        // static {
-        // PARSER.declareStringArray(Request.Builder::setInput, INPUT);
-        // PARSER.declareObject(Request.Builder::setTaskSettings, (p, c) -> p.mapOrdered(), TASK_SETTINGS);
-        // PARSER.declareString(Request.Builder::setQuery, QUERY);
-        // PARSER.declareString(Builder::setInferenceTimeout, TIMEOUT);
-        // }
         private static final EnumSet<InputType> validEnumsBeforeUnspecifiedAdded = EnumSet.of(InputType.INGEST, InputType.SEARCH);
         private static final EnumSet<InputType> validEnumsBeforeClassificationClusteringAdded = EnumSet.range(
             InputType.INGEST,
             InputType.UNSPECIFIED
         );
 
-        public static Builder parseRequest2(String inferenceEntityId, TaskType taskType, XContentParser parser) {
+        private static String parseExceptionMessage(
+            @Nullable Exception inputRequestException,
+            @Nullable Exception unifiedRequestException
+        ) {
+            var message =
+                "Failed to parse request. please specify a well formed request with either the input field or the messages field.";
+
+            if (inputRequestException != null) {
+                // TODO figure out a good error message
+                message += Strings.format(" input style error: [%s]", inputRequestException.getMessage());
+            }
+
+            if (unifiedRequestException != null) {
+                // TODO figure out a good error message
+                message += Strings.format(" unified style error: [%s]", unifiedRequestException.getMessage());
+            }
+
+            return message;
+        }
+
+        public static Builder parseRequest(String inferenceEntityId, TaskType taskType, XContentParser parser) throws IOException {
             Builder builder = null;
             Exception inputRequestException = null;
             try {
@@ -107,37 +120,6 @@ public class InferenceAction extends ActionType<InferenceAction.Response> {
             // For rest requests we won't know what the input type is
             builder.setInputType(InputType.UNSPECIFIED);
             return builder;
-        }
-
-        private static String parseExceptionMessage(
-            @Nullable Exception inputRequestException,
-            @Nullable Exception unifiedRequestException
-        ) {
-            var message =
-                "Failed to parse request. please specify a well formed request with either the input field or the messages field.";
-
-            if (inputRequestException != null) {
-                // TODO figure out a good error message
-                message += Strings.format(" input style error: [%s]", inputRequestException.getMessage());
-            }
-
-            if (unifiedRequestException != null) {
-                // TODO figure out a good error message
-                message += Strings.format(" unified style error: [%s]", unifiedRequestException.getMessage());
-            }
-
-            return message;
-        }
-
-        public static Builder parseRequest(String inferenceEntityId, TaskType taskType, XContentParser parser) throws IOException {
-
-            // Request.Builder builder = PARSER.apply(parser, null);
-            // builder.setInferenceEntityId(inferenceEntityId);
-            // builder.setTaskType(taskType);
-            // // For rest requests we won't know what the input type is
-            // builder.setInputType(InputType.UNSPECIFIED);
-            // return builder;
-            return parseRequest2(inferenceEntityId, taskType, parser);
         }
 
         private final TaskType taskType;
@@ -259,26 +241,40 @@ public class InferenceAction extends ActionType<InferenceAction.Response> {
         public ActionRequestValidationException validate() {
             if (input == null && unifiedRequest == null) {
                 var e = new ActionRequestValidationException();
-                e.addValidationError("Please specified either field [input] or [messages]");
+                e.addValidationError("Please specify either field [input] or [messages]");
                 return e;
+            }
+
+            // input is required but will be set to an empty array when using the chat completion
+            // request schema
+            if (input != null && input.isEmpty() && unifiedRequest != null) {
+                return validateUnifiedRequest();
             }
 
             var inputValidationResult = validateInputRequest();
             var unifiedValidationResult = validateUnifiedRequest();
 
-            // If no validation errors then return null
-            if (inputValidationResult == null && unifiedValidationResult == null) {
-                return null;
-            } else {
-                // Otherwise return the validation error
-                return Objects.requireNonNullElse(inputValidationResult, unifiedValidationResult);
+            var combined = new ActionRequestValidationException();
+
+            if (inputValidationResult != null) {
+                combined.addValidationErrors(inputValidationResult.validationErrors());
             }
+
+            if (unifiedValidationResult != null) {
+                combined.addValidationErrors(unifiedValidationResult.validationErrors());
+            }
+
+            if (combined.validationErrors().isEmpty()) {
+                return null;
+            }
+
+            return combined;
         }
 
         private ActionRequestValidationException validateInputRequest() {
             if (input == null) {
                 var e = new ActionRequestValidationException();
-                e.addValidationError("Field [input] cannot be null");
+                e.addValidationError("Field [input] cannot be null if using input style request schema");
                 return e;
             }
 
@@ -307,7 +303,7 @@ public class InferenceAction extends ActionType<InferenceAction.Response> {
         private ActionRequestValidationException validateUnifiedRequest() {
             if (unifiedRequest == null || unifiedRequest.messages() == null) {
                 var e = new ActionRequestValidationException();
-                e.addValidationError("Field [messages] cannot be null");
+                e.addValidationError("Field [messages] cannot be null if using the chat completion style request schema");
                 return e;
             }
 
@@ -317,7 +313,7 @@ public class InferenceAction extends ActionType<InferenceAction.Response> {
                 return e;
             }
 
-            if (taskType.isAnyOrSame(TaskType.COMPLETION) == false) {
+            if (taskType.isAnyOrSame(TaskType.CHAT_COMPLETION) == false) {
                 var e = new ActionRequestValidationException();
                 e.addValidationError("Field [taskType] must be [completion]");
                 return e;
@@ -331,11 +327,7 @@ public class InferenceAction extends ActionType<InferenceAction.Response> {
             super.writeTo(out);
             taskType.writeTo(out);
             out.writeString(inferenceEntityId);
-            if (out.getTransportVersion().onOrAfter(TransportVersions.ML_INFERENCE_ADDING_UNIFIED_TO_ACTION)) {
-                out.writeOptionalStringCollection(input);
-            } else if (out.getTransportVersion().onOrAfter(TransportVersions.V_8_12_0)) {
-                // TODO how do we make a field that was required optional/nullable?
-                // in reality I don't think this will be an issue because the request isn't rerouted at the moment
+            if (out.getTransportVersion().onOrAfter(TransportVersions.V_8_12_0)) {
                 out.writeStringCollection(Objects.requireNonNullElse(input, Collections.emptyList()));
             } else {
                 out.writeString(input.get(0));
@@ -404,13 +396,19 @@ public class InferenceAction extends ActionType<InferenceAction.Response> {
             private Builder(InputInferenceRequest request) {
                 Objects.requireNonNull(request);
 
-                this.input = request.input();
-                this.query = request.query();
-                this.taskSettings = request.taskSettings();
+                input = request.input();
+                query = request.query();
+                taskSettings = request.taskSettings();
+
+                if (request.timeout() != null) {
+                    timeout = TimeValue.parseTimeValue(request.timeout(), TIMEOUT.getPreferredName());
+                }
             }
 
             private Builder(UnifiedCompletionRequest request) {
                 unifiedCompletionRequest = Objects.requireNonNull(request);
+                // Leaving inputs as required so we'll default it to an empty array
+                input = Collections.emptyList();
             }
 
             public Builder setInferenceEntityId(String inferenceEntityId) {
@@ -431,10 +429,6 @@ public class InferenceAction extends ActionType<InferenceAction.Response> {
             public Builder setInferenceTimeout(TimeValue inferenceTimeout) {
                 this.timeout = inferenceTimeout;
                 return this;
-            }
-
-            private Builder setInferenceTimeout(String inferenceTimeout) {
-                return setInferenceTimeout(TimeValue.parseTimeValue(inferenceTimeout, TIMEOUT.getPreferredName()));
             }
 
             public Builder setStream(boolean stream) {

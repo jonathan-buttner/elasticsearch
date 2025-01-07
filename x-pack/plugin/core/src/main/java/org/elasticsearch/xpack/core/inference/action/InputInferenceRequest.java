@@ -18,12 +18,18 @@ import java.util.Objects;
 import static org.elasticsearch.xcontent.ConstructingObjectParser.constructorArg;
 import static org.elasticsearch.xcontent.ConstructingObjectParser.optionalConstructorArg;
 
-public record InputInferenceRequest(List<String> input, @Nullable Map<String, Object> taskSettings, @Nullable String query) {
+public record InputInferenceRequest(
+    List<String> input,
+    @Nullable Map<String, Object> taskSettings,
+    @Nullable String query,
+    @Nullable String timeout
+) {
 
     @SuppressWarnings("unchecked")
     public static final ConstructingObjectParser<InputInferenceRequest, Void> PARSER = new ConstructingObjectParser<>(
         InputInferenceRequest.class.getSimpleName(),
-        args -> new InputInferenceRequest((List<String>) args[0], (Map<String, Object>) args[1], (String) args[2])
+        true,
+        args -> new InputInferenceRequest((List<String>) args[0], (Map<String, Object>) args[1], (String) args[2], (String) args[3])
     );
 
     static {
@@ -31,8 +37,7 @@ public record InputInferenceRequest(List<String> input, @Nullable Map<String, Ob
         PARSER.declareObject(optionalConstructorArg(), (p, c) -> p.mapOrdered(), new ParseField("task_settings"));
         PARSER.declareString(optionalConstructorArg(), new ParseField("query"));
         // TODO I think this is a mistake, should we be parsing the timeout from the body?
-        // I suppose this is a breaking change?
-        // PARSER.declareString(optionalConstructorArg(), new ParseField("timeout"));
+        PARSER.declareString(optionalConstructorArg(), new ParseField("timeout"));
     }
 
     public InputInferenceRequest {

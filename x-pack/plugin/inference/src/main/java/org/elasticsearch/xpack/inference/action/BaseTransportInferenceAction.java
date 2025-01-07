@@ -13,7 +13,6 @@ import org.elasticsearch.ElasticsearchStatusException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.support.ActionFilters;
 import org.elasticsearch.action.support.HandledTransportAction;
-import org.elasticsearch.common.io.stream.Writeable;
 import org.elasticsearch.common.util.concurrent.EsExecutors;
 import org.elasticsearch.common.xcontent.ChunkedToXContent;
 import org.elasticsearch.core.Nullable;
@@ -23,10 +22,10 @@ import org.elasticsearch.inference.InferenceServiceResults;
 import org.elasticsearch.inference.Model;
 import org.elasticsearch.inference.TaskType;
 import org.elasticsearch.inference.UnparsedModel;
+import org.elasticsearch.injection.guice.Inject;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.tasks.Task;
 import org.elasticsearch.transport.TransportService;
-import org.elasticsearch.xpack.core.inference.action.BaseInferenceActionRequest;
 import org.elasticsearch.xpack.core.inference.action.InferenceAction;
 import org.elasticsearch.xpack.inference.action.task.StreamingTaskManager;
 import org.elasticsearch.xpack.inference.common.DelegatingProcessor;
@@ -41,9 +40,7 @@ import static org.elasticsearch.core.Strings.format;
 import static org.elasticsearch.xpack.inference.telemetry.InferenceStats.modelAttributes;
 import static org.elasticsearch.xpack.inference.telemetry.InferenceStats.responseAttributes;
 
-public abstract class BaseTransportInferenceAction<Request extends BaseInferenceActionRequest> extends HandledTransportAction<
-    Request,
-    InferenceAction.Response> {
+public class BaseTransportInferenceAction extends HandledTransportAction<InferenceAction.Request, InferenceAction.Response> {
 
     private static final Logger log = LogManager.getLogger(BaseTransportInferenceAction.class);
     private static final String STREAMING_INFERENCE_TASK_TYPE = "streaming_inference";
@@ -53,17 +50,16 @@ public abstract class BaseTransportInferenceAction<Request extends BaseInference
     private final InferenceStats inferenceStats;
     private final StreamingTaskManager streamingTaskManager;
 
+    @Inject
     public BaseTransportInferenceAction(
-        String inferenceActionName,
         TransportService transportService,
         ActionFilters actionFilters,
         ModelRegistry modelRegistry,
         InferenceServiceRegistry serviceRegistry,
         InferenceStats inferenceStats,
-        StreamingTaskManager streamingTaskManager,
-        Writeable.Reader<Request> requestReader
+        StreamingTaskManager streamingTaskManager
     ) {
-        super(inferenceActionName, transportService, actionFilters, requestReader, EsExecutors.DIRECT_EXECUTOR_SERVICE);
+        super(InferenceAction.NAME, transportService, actionFilters, InferenceAction.Request::new, EsExecutors.DIRECT_EXECUTOR_SERVICE);
         this.modelRegistry = modelRegistry;
         this.serviceRegistry = serviceRegistry;
         this.inferenceStats = inferenceStats;
@@ -71,8 +67,9 @@ public abstract class BaseTransportInferenceAction<Request extends BaseInference
     }
 
     @Override
-    protected void doExecute(Task task, Request request, ActionListener<InferenceAction.Response> listener) {
+    protected void doExecute(Task task, InferenceAction.Request request, ActionListener<InferenceAction.Response> listener) {
         var timer = InferenceTimer.start();
+        var transportRequest = createTransportRequest(request);
 
         var getModelListener = ActionListener.wrap((UnparsedModel unparsedModel) -> {
             var service = serviceRegistry.getService(unparsedModel.service());
@@ -83,8 +80,8 @@ public abstract class BaseTransportInferenceAction<Request extends BaseInference
                     () -> requestModelTaskTypeMismatchException(request.getTaskType(), unparsedModel.taskType())
                 );
                 validationHelper(
-                    () -> isInvalidTaskTypeForInferenceEndpoint(request, unparsedModel),
-                    () -> createInvalidTaskTypeException(request, unparsedModel)
+                    () -> transportRequest.isInvalidTaskTypeForInferenceEndpoint(unparsedModel),
+                    () -> transportRequest.createInvalidTaskTypeException(unparsedModel)
                 );
             } catch (Exception e) {
                 recordMetrics(unparsedModel, timer, e);
@@ -99,7 +96,7 @@ public abstract class BaseTransportInferenceAction<Request extends BaseInference
                     unparsedModel.settings(),
                     unparsedModel.secrets()
                 );
-            inferOnServiceWithMetrics(model, request, service.get(), timer, listener);
+            inferOnServiceWithMetrics(model, transportRequest, service.get(), timer, listener);
         }, e -> {
             try {
                 inferenceStats.inferenceDuration().record(timer.elapsedMillis(), responseAttributes(e));
@@ -112,15 +109,19 @@ public abstract class BaseTransportInferenceAction<Request extends BaseInference
         modelRegistry.getModelWithSecrets(request.getInferenceEntityId(), getModelListener);
     }
 
+    private static TransportRequest createTransportRequest(InferenceAction.Request request) {
+        if (request.getInput() == null) {
+            return new InputRequest(request);
+        } else {
+            return new UnifiedRequest(request);
+        }
+    }
+
     private static void validationHelper(Supplier<Boolean> validationFailure, Supplier<ElasticsearchStatusException> exceptionCreator) {
         if (validationFailure.get()) {
             throw exceptionCreator.get();
         }
     }
-
-    protected abstract boolean isInvalidTaskTypeForInferenceEndpoint(Request request, UnparsedModel unparsedModel);
-
-    protected abstract ElasticsearchStatusException createInvalidTaskTypeException(Request request, UnparsedModel unparsedModel);
 
     private void recordMetrics(UnparsedModel model, InferenceTimer timer, @Nullable Throwable t) {
         try {
@@ -132,14 +133,14 @@ public abstract class BaseTransportInferenceAction<Request extends BaseInference
 
     private void inferOnServiceWithMetrics(
         Model model,
-        Request request,
+        TransportRequest request,
         InferenceService service,
         InferenceTimer timer,
         ActionListener<InferenceAction.Response> listener
     ) {
         inferenceStats.requestCount().incrementBy(1, modelAttributes(model));
         inferOnService(model, request, service, ActionListener.wrap(inferenceResults -> {
-            if (request.isStreaming()) {
+            if (request.actionRequest().isStreaming()) {
                 var taskProcessor = streamingTaskManager.<ChunkedToXContent>create(STREAMING_INFERENCE_TASK_TYPE, STREAMING_TASK_ACTION);
                 inferenceResults.publisher().subscribe(taskProcessor);
 
@@ -165,22 +166,20 @@ public abstract class BaseTransportInferenceAction<Request extends BaseInference
         }
     }
 
-    private void inferOnService(Model model, Request request, InferenceService service, ActionListener<InferenceServiceResults> listener) {
-        if (request.isStreaming() == false || service.canStream(request.getTaskType())) {
-            doInference(model, request, service, listener);
+    private void inferOnService(
+        Model model,
+        TransportRequest request,
+        InferenceService service,
+        ActionListener<InferenceServiceResults> listener
+    ) {
+        if (request.actionRequest().isStreaming() == false || service.canStream(request.actionRequest().getTaskType())) {
+            request.performInference(model, service, listener);
         } else {
-            listener.onFailure(unsupportedStreamingTaskException(request, service));
+            listener.onFailure(unsupportedStreamingTaskException(request.actionRequest(), service));
         }
     }
 
-    protected abstract void doInference(
-        Model model,
-        Request request,
-        InferenceService service,
-        ActionListener<InferenceServiceResults> listener
-    );
-
-    private ElasticsearchStatusException unsupportedStreamingTaskException(Request request, InferenceService service) {
+    private ElasticsearchStatusException unsupportedStreamingTaskException(InferenceAction.Request request, InferenceService service) {
         var supportedTasks = service.supportedStreamingTasks();
         if (supportedTasks.isEmpty()) {
             return new ElasticsearchStatusException(
@@ -212,6 +211,64 @@ public abstract class BaseTransportInferenceAction<Request extends BaseInference
             requested,
             expected
         );
+    }
+
+    private interface TransportRequest {
+        InferenceAction.Request actionRequest();
+
+        boolean isInvalidTaskTypeForInferenceEndpoint(UnparsedModel unparsedModel);
+
+        ElasticsearchStatusException createInvalidTaskTypeException(UnparsedModel unparsedModel);
+
+        void performInference(Model model, InferenceService service, ActionListener<InferenceServiceResults> listener);
+    }
+
+    private record InputRequest(InferenceAction.Request actionRequest) implements TransportRequest {
+        @Override
+        public boolean isInvalidTaskTypeForInferenceEndpoint(UnparsedModel unparsedModel) {
+            return false;
+        }
+
+        @Override
+        public ElasticsearchStatusException createInvalidTaskTypeException(UnparsedModel unparsedModel) {
+            return null;
+        }
+
+        @Override
+        public void performInference(Model model, InferenceService service, ActionListener<InferenceServiceResults> listener) {
+            service.infer(
+                model,
+                actionRequest.getQuery(),
+                actionRequest.getInput(),
+                actionRequest.isStreaming(),
+                actionRequest.getTaskSettings(),
+                actionRequest.getInputType(),
+                actionRequest.getInferenceTimeout(),
+                listener
+            );
+        }
+    }
+
+    private record UnifiedRequest(InferenceAction.Request actionRequest) implements TransportRequest {
+        @Override
+        public boolean isInvalidTaskTypeForInferenceEndpoint(UnparsedModel unparsedModel) {
+            return actionRequest.getTaskType().isAnyOrSame(TaskType.COMPLETION) == false || unparsedModel.taskType() != TaskType.COMPLETION;
+        }
+
+        @Override
+        public ElasticsearchStatusException createInvalidTaskTypeException(UnparsedModel unparsedModel) {
+            return new ElasticsearchStatusException(
+                "Incompatible task_type for unified API, the requested type [{}] must be one of [{}]",
+                RestStatus.BAD_REQUEST,
+                actionRequest.getTaskType(),
+                TaskType.COMPLETION.toString()
+            );
+        }
+
+        @Override
+        public void performInference(Model model, InferenceService service, ActionListener<InferenceServiceResults> listener) {
+            service.unifiedCompletionInfer(model, actionRequest.getUnifiedRequest(), null, listener);
+        }
     }
 
     private class PublisherWithMetrics extends DelegatingProcessor<ChunkedToXContent, ChunkedToXContent> {

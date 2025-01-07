@@ -15,6 +15,7 @@ import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.core.Tuple;
 import org.elasticsearch.inference.InputType;
 import org.elasticsearch.inference.TaskType;
+import org.elasticsearch.inference.UnifiedCompletionRequest;
 import org.elasticsearch.xcontent.json.JsonXContent;
 import org.elasticsearch.xpack.core.ml.AbstractBWCWireSerializationTestCase;
 
@@ -29,6 +30,7 @@ import static org.elasticsearch.xpack.core.inference.action.InferenceAction.Requ
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.collection.IsIterableContainingInOrder.contains;
 
+// TODO fix these tests and mutation stuff
 public class InferenceActionRequestTests extends AbstractBWCWireSerializationTestCase<InferenceAction.Request> {
 
     @Override
@@ -164,6 +166,72 @@ public class InferenceActionRequestTests extends AbstractBWCWireSerializationTes
         ActionRequestValidationException queryEmptyError = queryEmptyRequest.validate();
         assertNotNull(queryEmptyError);
         assertThat(queryEmptyError.getMessage(), is("Validation Failed: 1: Field [query] cannot be empty for task type [rerank];"));
+    }
+
+    public void testValidation_ReturnsException_When_UnifiedCompletionRequestMessage_Is_Null() {
+        var request = new InferenceAction.Request(
+            TaskType.COMPLETION,
+            "model",
+            null,
+            List.of(),
+            null,
+            null,
+            null,
+            false,
+            UnifiedCompletionRequest.of(null)
+        );
+
+        var exception = request.validate();
+        assertThat(exception.getMessage(), is("Validation Failed: 1: Field [messages] cannot be null;"));
+    }
+
+    public void testValidation_ReturnsException_When_UnifiedCompletionRequest_Is_EmptyArray() {
+        var request = new InferenceAction.Request(
+            TaskType.COMPLETION,
+            "model",
+            null,
+            List.of(),
+            null,
+            null,
+            null,
+            false,
+            UnifiedCompletionRequest.of(List.of())
+        );
+
+        var exception = request.validate();
+        assertThat(exception.getMessage(), is("Validation Failed: 1: Field [messages] cannot be an empty array;"));
+    }
+
+    public void testValidation_ReturnsException_When_TaskType_IsNot_Completion() {
+        var request = new InferenceAction.Request(
+            TaskType.TEXT_EMBEDDING,
+            "model",
+            null,
+            List.of(),
+            null,
+            null,
+            null,
+            false,
+            UnifiedCompletionRequest.of(List.of(UnifiedCompletionRequestTests.randomMessage()))
+        );
+
+        var exception = request.validate();
+        assertThat(exception.getMessage(), is("Validation Failed: 1: Field [taskType] must be [completion];"));
+    }
+
+    public void testValidation_ReturnsNull_When_TaskType_IsAny() {
+        var request = new InferenceAction.Request(
+            TaskType.ANY,
+            "model",
+            null,
+            List.of(),
+            null,
+            null,
+            null,
+            false,
+            UnifiedCompletionRequest.of(List.of(UnifiedCompletionRequestTests.randomMessage()))
+        );
+        assertNull(request.validate());
     }
 
     public void testParseRequest_DefaultsInputTypeToIngest() throws IOException {

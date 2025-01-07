@@ -21,7 +21,6 @@ import org.elasticsearch.inference.UnparsedModel;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.test.ESTestCase;
 import org.elasticsearch.transport.TransportService;
-import org.elasticsearch.xpack.core.inference.action.BaseInferenceActionRequest;
 import org.elasticsearch.xpack.core.inference.action.InferenceAction;
 import org.elasticsearch.xpack.inference.action.task.StreamingTaskManager;
 import org.elasticsearch.xpack.inference.registry.ModelRegistry;
@@ -48,10 +47,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-public abstract class BaseTransportInferenceActionTestCase<Request extends BaseInferenceActionRequest> extends ESTestCase {
+public class BaseTransportInferenceActionTestCase extends ESTestCase {
     private ModelRegistry modelRegistry;
     private StreamingTaskManager streamingTaskManager;
-    private BaseTransportInferenceAction<Request> action;
+    private BaseTransportInferenceAction action;
 
     protected static final String serviceId = "serviceId";
     protected static final TaskType taskType = TaskType.COMPLETION;
@@ -68,19 +67,15 @@ public abstract class BaseTransportInferenceActionTestCase<Request extends BaseI
         serviceRegistry = mock();
         inferenceStats = new InferenceStats(mock(), mock());
         streamingTaskManager = mock();
-        action = createAction(transportService, actionFilters, modelRegistry, serviceRegistry, inferenceStats, streamingTaskManager);
+        action = new BaseTransportInferenceAction(
+            transportService,
+            actionFilters,
+            modelRegistry,
+            serviceRegistry,
+            inferenceStats,
+            streamingTaskManager
+        );
     }
-
-    protected abstract BaseTransportInferenceAction<Request> createAction(
-        TransportService transportService,
-        ActionFilters actionFilters,
-        ModelRegistry modelRegistry,
-        InferenceServiceRegistry serviceRegistry,
-        InferenceStats inferenceStats,
-        StreamingTaskManager streamingTaskManager
-    );
-
-    protected abstract Request createRequest();
 
     public void testMetricsAfterModelRegistryError() {
         var expectedException = new IllegalStateException("hello");
@@ -109,7 +104,7 @@ public abstract class BaseTransportInferenceActionTestCase<Request extends BaseI
     }
 
     protected ActionListener<InferenceAction.Response> doExecute(TaskType taskType, boolean stream) {
-        Request request = createRequest();
+        InferenceAction.Request request = mock(InferenceAction.Request.class);
         when(request.getInferenceEntityId()).thenReturn(inferenceId);
         when(request.getTaskType()).thenReturn(taskType);
         when(request.isStreaming()).thenReturn(stream);
