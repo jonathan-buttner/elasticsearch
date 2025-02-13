@@ -11,18 +11,15 @@ import org.elasticsearch.xcontent.ConstructingObjectParser;
 
 import java.util.Objects;
 
-import static org.elasticsearch.xcontent.ConstructingObjectParser.constructorArg;
-import static org.elasticsearch.xcontent.ConstructingObjectParser.optionalConstructorArg;
-
+// TODO do we really need this class?
 public class SettingsFieldParser {
-    private final ConfigSettingsField configSettingsField;
+    private final GenericFieldParser genericFieldParser;
 
-    public SettingsFieldParser(ConfigSettingsField configSettingsField) {
-        this.configSettingsField = Objects.requireNonNull(configSettingsField);
+    public SettingsFieldParser(GenericFieldParser genericFieldParser) {
+        this.genericFieldParser = Objects.requireNonNull(genericFieldParser);
     }
 
     public void apply(ConstructingObjectParser<Object, Void> parser) {
-        var argType = configSettingsField.required() ? constructorArg() : optionalConstructorArg();
-        configSettingsField.addParserField(parser, argType);
+        genericFieldParser.addParserField(parser);
     }
 }

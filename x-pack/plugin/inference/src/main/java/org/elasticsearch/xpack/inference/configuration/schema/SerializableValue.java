@@ -12,16 +12,19 @@ import org.elasticsearch.xcontent.XContentBuilder;
 
 import java.io.IOException;
 
-public class NoopXContentSerializer implements XContentSerializable {
-    public static final NoopXContentSerializer INSTANCE = new NoopXContentSerializer();
+/**
+ * @param persistentStateFieldName the field name used to parse the create inference entity request and to persist the values to ES
+ * @param value the value parsed from a request or persistent state that needs to be serialized
+ */
+public record SerializableValue(String persistentStateFieldName, Object value) implements XContentSerializable {
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, ToXContent.Params params) throws IOException {
-        return builder;
+        return toXContentWithName(builder, params, persistentStateFieldName);
     }
 
     @Override
     public XContentBuilder toXContentWithName(XContentBuilder builder, ToXContent.Params params, String fieldName) throws IOException {
-        return builder;
+        return builder.field(fieldName, value);
     }
 }
