@@ -77,7 +77,7 @@ public class GenericFieldParser implements DynamicallyParseable, DefaultableFiel
                 return NoopXContentSerializer.INSTANCE;
             }
 
-            return typeHandler.newValue(fieldName, defaultValue);
+            return typeHandler.newSerializableValue(fieldName, defaultValue);
         }
 
         static {

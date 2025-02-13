@@ -7,12 +7,13 @@
 
 package org.elasticsearch.xpack.inference.configuration.schema;
 
+import org.elasticsearch.common.io.stream.Writeable;
 import org.elasticsearch.xcontent.ToXContent;
 import org.elasticsearch.xcontent.XContentBuilder;
 
 import java.io.IOException;
 
-public interface XContentSerializable {
+public interface XContentSerializable extends Writeable {
 
     /**
      * This method handles serializing to {@link org.elasticsearch.xcontent.XContent} using the declared field name

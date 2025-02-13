@@ -7,6 +7,8 @@
 
 package org.elasticsearch.xpack.inference.configuration.schema;
 
+import org.elasticsearch.common.io.stream.StreamInput;
+import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.xcontent.ConstructingObjectParser;
 import org.elasticsearch.xcontent.ParseField;
 import org.elasticsearch.xcontent.ToXContent;
@@ -64,6 +66,10 @@ public class RateLimitParser implements DynamicallyParseable, DefaultableField {
             this.requestsPerMinute = requestsPerMinute;
         }
 
+        public RateLimitSerializable(StreamInput in) throws IOException {
+            this(in.readVLong());
+        }
+
         @Override
         public XContentBuilder toXContent(XContentBuilder builder, ToXContent.Params params) throws IOException {
             return toXContentWithName(builder, params, RATE_LIMIT_FIELD);
@@ -75,6 +81,11 @@ public class RateLimitParser implements DynamicallyParseable, DefaultableField {
             builder.field(REQUESTS_PER_MINUTE_FIELD, requestsPerMinute);
             builder.endObject();
             return builder;
+        }
+
+        @Override
+        public void writeTo(StreamOutput out) throws IOException {
+            out.writeVLong(requestsPerMinute);
         }
     }
 

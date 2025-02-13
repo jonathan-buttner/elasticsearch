@@ -13,7 +13,7 @@ import java.util.function.BiConsumer;
 import static org.elasticsearch.xcontent.ConstructingObjectParser.constructorArg;
 import static org.elasticsearch.xcontent.ConstructingObjectParser.optionalConstructorArg;
 
-public abstract class BaseTypeHandler implements TypeHandler {
+public abstract class BaseTypeHandler<T> implements TypeHandler {
     private static final String ILLEGAL_ARG_MESSAGE = "Invalid value [%s], expected a %s but is a %s";
 
     private final String typeName;
@@ -26,17 +26,18 @@ public abstract class BaseTypeHandler implements TypeHandler {
         constructorArgCall = this.handlerConfiguration.required() ? constructorArg() : optionalConstructorArg();
     }
 
-    @Override
-    public SerializableValue newValue(String persistentStateFieldName, Object value) {
+    public SerializableValue<T> newSerializableValue(String persistentStateFieldName, Object value) {
         try {
-            validate(value);
-            return new SerializableValue(persistentStateFieldName, value);
+            var validatedTypedValue = validate(value);
+            return newValue(persistentStateFieldName, validatedTypedValue);
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException(String.format(ILLEGAL_ARG_MESSAGE, value, typeName, value.getClass().getSimpleName()));
         }
     }
 
-    protected abstract void validate(Object value);
+    protected abstract SerializableValue<T> newValue(String persistentStateFieldName, T value);
+
+    protected abstract T validate(Object value);
 
     public record HandlerConfiguration(GenericFieldParser.FieldType fieldType, String fieldName, boolean required) {}
 

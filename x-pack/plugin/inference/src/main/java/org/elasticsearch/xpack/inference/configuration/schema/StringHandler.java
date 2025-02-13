@@ -7,19 +7,46 @@
 
 package org.elasticsearch.xpack.inference.configuration.schema;
 
+import org.elasticsearch.common.io.stream.StreamInput;
+import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.xcontent.ConstructingObjectParser;
 import org.elasticsearch.xcontent.ObjectParser;
 import org.elasticsearch.xcontent.ParseField;
 
-public class StringHandler extends BaseTypeHandler {
+import java.io.IOException;
+
+public class StringHandler extends BaseTypeHandler<String> {
     public StringHandler(HandlerConfiguration handlerConfiguration) {
         super("string", handlerConfiguration);
     }
 
     @Override
-    protected void validate(Object value) {
-        if (value instanceof String == false) {
-            throw new IllegalArgumentException();
+    protected SerializableValue<String> newValue(String persistentStateFieldName, String value) {
+        return new StringValue(persistentStateFieldName, value);
+    }
+
+    @Override
+    protected String validate(Object value) {
+        if (value instanceof String stringValue) {
+            return stringValue;
+        }
+
+        throw new IllegalArgumentException();
+    }
+
+    private static class StringValue extends SerializableValue<String> {
+        StringValue(String persistentStateFieldName, String value) {
+            super(persistentStateFieldName, value);
+        }
+
+        @Override
+        public String readValue(StreamInput in) throws IOException {
+            return in.readString();
+        }
+
+        @Override
+        public void writeValue(StreamOutput out, String value) throws IOException {
+            out.writeString(value);
         }
     }
 
@@ -27,7 +54,7 @@ public class StringHandler extends BaseTypeHandler {
     public void declareParserField(ConstructingObjectParser<Object, Void> parser) {
         parser.declareField(
             constructorArgCall,
-            (p, c) -> new SerializableValue(handlerConfiguration.fieldName(), p.text()),
+            (p, c) -> new StringValue(handlerConfiguration.fieldName(), p.text()),
             new ParseField(handlerConfiguration.fieldName()),
             ObjectParser.ValueType.STRING
         );
