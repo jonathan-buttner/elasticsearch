@@ -13,13 +13,13 @@ import java.util.Objects;
 
 // TODO do we really need this class?
 public class SettingsFieldParser {
-    private final GenericFieldParser genericFieldParser;
+    private final GenericField genericField;
 
-    public SettingsFieldParser(GenericFieldParser genericFieldParser) {
-        this.genericFieldParser = Objects.requireNonNull(genericFieldParser);
+    public SettingsFieldParser(GenericField genericField) {
+        this.genericField = Objects.requireNonNull(genericField);
     }
 
     public void apply(ConstructingObjectParser<Object, Void> parser) {
-        genericFieldParser.addParserField(parser);
+        genericField.addParserField(parser);
     }
 }

@@ -39,6 +39,10 @@ public class StringHandler extends BaseTypeHandler<String> {
             super(persistentStateFieldName, value);
         }
 
+        StringValue(StreamInput in) throws IOException {
+            super(in);
+        }
+
         @Override
         public String readValue(StreamInput in) throws IOException {
             return in.readString();

@@ -39,11 +39,11 @@ public abstract class BaseTypeHandler<T> implements TypeHandler {
 
     protected abstract T validate(Object value);
 
-    public record HandlerConfiguration(GenericFieldParser.FieldType fieldType, String fieldName, boolean required) {}
+    public record HandlerConfiguration(GenericField.Type type, String fieldName, boolean required) {}
 
     // TODO consider moving to a new class
     public static TypeHandler makeTypeHandler(HandlerConfiguration handlerConfiguration) {
-        return switch (handlerConfiguration.fieldType()) {
+        return switch (handlerConfiguration.type()) {
             case STRING -> new StringHandler(handlerConfiguration);
             case INTEGER -> new IntegerHandler(handlerConfiguration);
         };

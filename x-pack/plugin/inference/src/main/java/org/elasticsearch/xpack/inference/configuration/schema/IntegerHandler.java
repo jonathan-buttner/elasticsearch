@@ -40,6 +40,10 @@ public class IntegerHandler extends BaseTypeHandler<Integer> {
             super(persistentStateFieldName, value);
         }
 
+        IntegerValue(StreamInput in) throws IOException {
+            super(in);
+        }
+
         @Override
         public Integer readValue(StreamInput in) throws IOException {
             return in.readVInt();

@@ -21,17 +21,17 @@ import java.util.Objects;
 import static org.elasticsearch.xcontent.ConstructingObjectParser.constructorArg;
 import static org.elasticsearch.xcontent.ConstructingObjectParser.optionalConstructorArg;
 
-public class RateLimitParser implements DynamicallyParseable, DefaultableField {
+// TODO maybe make this a record
+public class RateLimitField implements ConfigField {
     private static final String REQUESTS_PER_MINUTE_FIELD = "requests_per_minute";
-    private static final String RATE_LIMIT_FIELD = "rate_limit";
+    public static final String RATE_LIMIT_FIELD = "rate_limit";
 
-    // TODO figure out if the schema class needs the path or not
-    public record Schema(RequestsPerMinuteSchema requestsPerMinuteSchema, String path) {
+    public record Schema(RequestsPerMinuteSchema requestsPerMinuteSchema) {
 
-        private static final ConstructingObjectParser<Schema, String> PARSER = new ConstructingObjectParser<>(
-            RateLimitParser.class.getSimpleName() + "." + Schema.class.getSimpleName(),
+        private static final ConstructingObjectParser<Schema, Void> PARSER = new ConstructingObjectParser<>(
+            RateLimitField.class.getSimpleName() + "." + Schema.class.getSimpleName(),
             false,
-            (args, rootPath) -> new Schema((RequestsPerMinuteSchema) args[0], rootPath)
+            (args, c) -> new Schema((RequestsPerMinuteSchema) args[0])
         );
 
         static {
@@ -46,7 +46,7 @@ public class RateLimitParser implements DynamicallyParseable, DefaultableField {
             private static final ConstructingObjectParser<RequestsPerMinuteSchema, Void> PARSER = new ConstructingObjectParser<>(
                 RequestsPerMinuteSchema.class.getSimpleName(),
                 false,
-                (args, rootPath) -> new RequestsPerMinuteSchema((Long) args[0])
+                (args, c) -> new RequestsPerMinuteSchema((Long) args[0])
             );
 
             static {
@@ -107,7 +107,7 @@ public class RateLimitParser implements DynamicallyParseable, DefaultableField {
         }
 
         private static final ConstructingObjectParser<Value, String> PARSER = new ConstructingObjectParser<>(
-            RateLimitParser.class.getSimpleName() + "." + Value.class.getSimpleName(),
+            RateLimitField.class.getSimpleName() + "." + Value.class.getSimpleName(),
             false,
             (args, path) -> new Value((Long) args[0], path)
         );
@@ -117,19 +117,21 @@ public class RateLimitParser implements DynamicallyParseable, DefaultableField {
         }
     }
 
-    public static RateLimitParser parseSchema(XContentParser parser, String rootPath) throws IOException {
+    public static RateLimitField parseSchema(XContentParser parser, String rootPath) {
         var schema = Schema.PARSER.apply(parser, null);
 
-        return new RateLimitParser(schema, new RateLimitSerializable(schema.requestsPerMinuteSchema.defaultRequestsPerMinute));
+        return new RateLimitField(
+            new RateLimitSerializable(schema.requestsPerMinuteSchema.defaultRequestsPerMinute),
+            rootPath + "." + RATE_LIMIT_FIELD
+        );
     }
 
-    // TODO not sure if we still need this for the path information?
-    private final Schema schemaSettings;
     private final XContentSerializable defaultValue;
+    private final String path;
 
-    private RateLimitParser(Schema schemaSettings, XContentSerializable defaultValue) {
-        this.schemaSettings = Objects.requireNonNull(schemaSettings);
+    private RateLimitField(XContentSerializable defaultValue, String path) {
         this.defaultValue = Objects.requireNonNull(defaultValue);
+        this.path = Objects.requireNonNull(path);
     }
 
     @Override
@@ -141,5 +143,10 @@ public class RateLimitParser implements DynamicallyParseable, DefaultableField {
     @Override
     public XContentSerializable defaultValue() {
         return defaultValue;
+    }
+
+    @Override
+    public String schemaFieldName() {
+        return RATE_LIMIT_FIELD;
     }
 }

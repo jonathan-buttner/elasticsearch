@@ -24,13 +24,13 @@ import static org.elasticsearch.xcontent.ConstructingObjectParser.constructorArg
 import static org.elasticsearch.xcontent.ConstructingObjectParser.optionalConstructorArg;
 import static org.elasticsearch.xpack.inference.configuration.schema.Utils.parseOptionalBoolean;
 
-public class GenericFieldParser implements DynamicallyParseable, DefaultableField {
+public class GenericField implements ConfigField {
 
-    enum FieldType {
+    enum Type {
         STRING,
         INTEGER;
 
-        private static GenericFieldParser.FieldType fromString(String enumAsString) {
+        private static Type fromString(String enumAsString) {
             if (enumAsString == null) {
                 throw new IllegalArgumentException("The string value must not be null");
             }
@@ -38,7 +38,7 @@ public class GenericFieldParser implements DynamicallyParseable, DefaultableFiel
             try {
                 return valueOf(enumAsString.trim().toUpperCase(Locale.ROOT));
             } catch (IllegalArgumentException e) {
-                var enumValues = GenericFieldParser.FieldType.values().clone();
+                var enumValues = Type.values().clone();
                 Arrays.sort(enumValues);
                 throw new IllegalArgumentException(
                     Strings.format("Invalid string value [%s], must be one of %s", enumAsString, enumValues),
@@ -50,7 +50,7 @@ public class GenericFieldParser implements DynamicallyParseable, DefaultableFiel
 
     public record Schema(
         String name,
-        GenericFieldParser.FieldType fieldType,
+        Type type,
         boolean trackOrigin,
         boolean required,
         XContentSerializable defaultValue,
@@ -59,16 +59,16 @@ public class GenericFieldParser implements DynamicallyParseable, DefaultableFiel
     ) {
 
         private static final ConstructingObjectParser<Schema, String> PARSER = new ConstructingObjectParser<>(
-            GenericFieldParser.class.getSimpleName(),
+            GenericField.class.getSimpleName(),
             false,
             (args, rootPath) -> {
                 var fieldName = (String) args[0];
-                var type = GenericFieldParser.FieldType.fromString((String) args[1]);
+                var type = Type.fromString((String) args[1]);
                 var required = parseOptionalBoolean((Boolean) args[3]);
                 var typeHandler = BaseTypeHandler.makeTypeHandler(new BaseTypeHandler.HandlerConfiguration(type, fieldName, required));
                 var defaultValue = newTypedDefault(fieldName, typeHandler, args[4]);
 
-                return new Schema(fieldName, type, (boolean) args[2], required, defaultValue, rootPath, typeHandler);
+                return new Schema(fieldName, type, (boolean) args[2], required, defaultValue, rootPath + "." + fieldName, typeHandler);
             }
         );
 
@@ -110,14 +110,14 @@ public class GenericFieldParser implements DynamicallyParseable, DefaultableFiel
 
     }
 
-    public static GenericFieldParser parseSchema(XContentParser parser, String rootPath) throws IOException {
+    public static GenericField parseSchema(XContentParser parser, String rootPath) throws IOException {
         var field = Schema.PARSER.apply(parser, rootPath);
-        return new GenericFieldParser(field);
+        return new GenericField(field);
     }
 
     private final Schema schema;
 
-    private GenericFieldParser(Schema schema) {
+    private GenericField(Schema schema) {
         this.schema = Objects.requireNonNull(schema);
     }
 
@@ -129,5 +129,10 @@ public class GenericFieldParser implements DynamicallyParseable, DefaultableFiel
     @Override
     public XContentSerializable defaultValue() {
         return schema.defaultValue();
+    }
+
+    @Override
+    public String schemaFieldName() {
+        return schema.name();
     }
 }
