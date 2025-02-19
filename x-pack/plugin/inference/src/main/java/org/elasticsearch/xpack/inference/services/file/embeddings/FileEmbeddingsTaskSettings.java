@@ -32,11 +32,11 @@ import static org.elasticsearch.xpack.inference.services.openai.OpenAiServiceFie
  * User is an optional unique identifier representing the end-user, which can help OpenAI to monitor and detect abuse
  *  <a href="https://platform.openai.com/docs/api-reference/embeddings/create">see the openai docs for more details</a>
  */
-public class OpenAiEmbeddingsTaskSettings implements TaskSettings {
+public class FileEmbeddingsTaskSettings implements TaskSettings {
 
     public static final String NAME = "openai_embeddings_task_settings";
 
-    public static OpenAiEmbeddingsTaskSettings fromMap(Map<String, Object> map, ConfigurationParseContext context) {
+    public static FileEmbeddingsTaskSettings fromMap(Map<String, Object> map, ConfigurationParseContext context) {
         ValidationException validationException = new ValidationException();
 
         String user = extractOptionalString(map, USER, ModelConfigurations.TASK_SETTINGS, validationException);
@@ -44,27 +44,27 @@ public class OpenAiEmbeddingsTaskSettings implements TaskSettings {
             throw validationException;
         }
 
-        return new OpenAiEmbeddingsTaskSettings(user);
+        return new FileEmbeddingsTaskSettings(user);
     }
 
     /**
-     * Creates a new {@link OpenAiEmbeddingsTaskSettings} object by overriding the values in originalSettings with the ones
+     * Creates a new {@link FileEmbeddingsTaskSettings} object by overriding the values in originalSettings with the ones
      * passed in via requestSettings if the fields are not null.
      * @param originalSettings the original task settings from the inference entity configuration from storage
      * @param requestSettings the task settings from the request
-     * @return a new {@link OpenAiEmbeddingsTaskSettings}
+     * @return a new {@link FileEmbeddingsTaskSettings}
      */
-    public static OpenAiEmbeddingsTaskSettings of(
-        OpenAiEmbeddingsTaskSettings originalSettings,
-        OpenAiEmbeddingsRequestTaskSettings requestSettings
+    public static FileEmbeddingsTaskSettings of(
+        FileEmbeddingsTaskSettings originalSettings,
+        FileEmbeddingsRequestTaskSettings requestSettings
     ) {
         var userToUse = requestSettings.user() == null ? originalSettings.user : requestSettings.user();
-        return new OpenAiEmbeddingsTaskSettings(userToUse);
+        return new FileEmbeddingsTaskSettings(userToUse);
     }
 
     private final String user;
 
-    public OpenAiEmbeddingsTaskSettings(@Nullable String user) {
+    public FileEmbeddingsTaskSettings(@Nullable String user) {
         this.user = user;
     }
 
@@ -73,7 +73,7 @@ public class OpenAiEmbeddingsTaskSettings implements TaskSettings {
         return user == null;
     }
 
-    public OpenAiEmbeddingsTaskSettings(StreamInput in) throws IOException {
+    public FileEmbeddingsTaskSettings(StreamInput in) throws IOException {
         if (in.getTransportVersion().onOrAfter(TransportVersions.V_8_13_0)) {
             this.user = in.readOptionalString();
         } else {
@@ -120,7 +120,7 @@ public class OpenAiEmbeddingsTaskSettings implements TaskSettings {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        OpenAiEmbeddingsTaskSettings that = (OpenAiEmbeddingsTaskSettings) o;
+        FileEmbeddingsTaskSettings that = (FileEmbeddingsTaskSettings) o;
         return Objects.equals(user, that.user);
     }
 
@@ -131,7 +131,7 @@ public class OpenAiEmbeddingsTaskSettings implements TaskSettings {
 
     @Override
     public TaskSettings updatedTaskSettings(Map<String, Object> newSettings) {
-        OpenAiEmbeddingsRequestTaskSettings requestSettings = OpenAiEmbeddingsRequestTaskSettings.fromMap(new HashMap<>(newSettings));
+        FileEmbeddingsRequestTaskSettings requestSettings = FileEmbeddingsRequestTaskSettings.fromMap(new HashMap<>(newSettings));
         return of(this, requestSettings);
     }
 }

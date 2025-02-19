@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-package org.elasticsearch.xpack.inference.configuration.schema;
+package org.elasticsearch.xpack.inference.schema;
 
 import org.elasticsearch.core.Nullable;
 

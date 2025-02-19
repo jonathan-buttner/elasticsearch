@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-package org.elasticsearch.xpack.inference.configuration.schema;
+package org.elasticsearch.xpack.inference.schema;
 
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
@@ -59,7 +59,7 @@ public class RateLimitField implements ConfigField {
      * This class handles how to serialize the rate limit field. The field could be a default value from the configuration schema
      * or one parsed from the persistent state.
      */
-    public static class RateLimitSerializable implements XContentSerializable {
+    public static class RateLimitSerializable implements ParsedValue {
         private final long requestsPerMinute;
 
         public RateLimitSerializable(long requestsPerMinute) {
@@ -71,12 +71,23 @@ public class RateLimitField implements ConfigField {
         }
 
         @Override
-        public XContentBuilder toXContent(XContentBuilder builder, ToXContent.Params params) throws IOException {
-            return toXContentWithName(builder, params, RATE_LIMIT_FIELD);
+        public String fieldName() {
+            return RATE_LIMIT_FIELD;
         }
 
         @Override
-        public XContentBuilder toXContentWithName(XContentBuilder builder, ToXContent.Params params, String fieldName) throws IOException {
+        public XContentBuilder toXContentFragment(XContentBuilder builder, ToXContent.Params params) throws IOException {
+            return toXContentFragmentWithName(builder, params, RATE_LIMIT_FIELD);
+        }
+
+        @Override
+        public XContentBuilder toXContentFragmentOfHiddenFields(XContentBuilder builder, ToXContent.Params params) throws IOException {
+            return builder;
+        }
+
+        @Override
+        public XContentBuilder toXContentFragmentWithName(XContentBuilder builder, ToXContent.Params params, String fieldName)
+            throws IOException {
             builder.startObject(fieldName);
             builder.field(REQUESTS_PER_MINUTE_FIELD, requestsPerMinute);
             builder.endObject();
@@ -86,6 +97,10 @@ public class RateLimitField implements ConfigField {
         @Override
         public void writeTo(StreamOutput out) throws IOException {
             out.writeVLong(requestsPerMinute);
+        }
+
+        public long getRequestsPerMinuteLimit() {
+            return requestsPerMinute;
         }
     }
 
@@ -126,22 +141,22 @@ public class RateLimitField implements ConfigField {
         );
     }
 
-    private final XContentSerializable defaultValue;
+    private final ParsedValue defaultValue;
     private final String path;
 
-    private RateLimitField(XContentSerializable defaultValue, String path) {
+    private RateLimitField(ParsedValue defaultValue, String path) {
         this.defaultValue = Objects.requireNonNull(defaultValue);
         this.path = Objects.requireNonNull(path);
     }
 
     @Override
-    public void declareParserField(ConstructingObjectParser<Object, Void> parser) {
+    public void declareParserField(ConstructingObjectParser<ParsedValue[], DynamicParser.Context> parser) {
         // TODO pass the right root path value here
         parser.declareObject(optionalConstructorArg(), (p, c) -> Value.parse(p, null), new ParseField(RATE_LIMIT_FIELD));
     }
 
     @Override
-    public XContentSerializable defaultValue() {
+    public ParsedValue defaultValue() {
         return defaultValue;
     }
 

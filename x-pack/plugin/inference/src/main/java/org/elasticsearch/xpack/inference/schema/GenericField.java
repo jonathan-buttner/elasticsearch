@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-package org.elasticsearch.xpack.inference.configuration.schema;
+package org.elasticsearch.xpack.inference.schema;
 
 import org.elasticsearch.common.Strings;
 import org.elasticsearch.core.Nullable;
@@ -22,7 +22,7 @@ import java.util.Objects;
 
 import static org.elasticsearch.xcontent.ConstructingObjectParser.constructorArg;
 import static org.elasticsearch.xcontent.ConstructingObjectParser.optionalConstructorArg;
-import static org.elasticsearch.xpack.inference.configuration.schema.Utils.parseOptionalBoolean;
+import static org.elasticsearch.xpack.inference.schema.Utils.parseOptionalBoolean;
 
 public class GenericField implements ConfigField {
 
@@ -48,15 +48,7 @@ public class GenericField implements ConfigField {
         }
     }
 
-    public record Schema(
-        String name,
-        Type type,
-        boolean trackOrigin,
-        boolean required,
-        XContentSerializable defaultValue,
-        String path,
-        TypeHandler typeHandler
-    ) {
+    public record Schema(String name, Type type, boolean required, ParsedValue defaultValue, String path, TypeHandler typeHandler) {
 
         private static final ConstructingObjectParser<Schema, String> PARSER = new ConstructingObjectParser<>(
             GenericField.class.getSimpleName(),
@@ -64,17 +56,20 @@ public class GenericField implements ConfigField {
             (args, rootPath) -> {
                 var fieldName = (String) args[0];
                 var type = Type.fromString((String) args[1]);
-                var required = parseOptionalBoolean((Boolean) args[3]);
+                var required = parseOptionalBoolean((Boolean) args[2]);
                 var typeHandler = BaseTypeHandler.makeTypeHandler(new BaseTypeHandler.HandlerConfiguration(type, fieldName, required));
-                var defaultValue = newTypedDefault(fieldName, typeHandler, args[4]);
+                var defaultValue = newTypedDefault(fieldName, typeHandler, args[3]);
 
-                return new Schema(fieldName, type, (boolean) args[2], required, defaultValue, rootPath + "." + fieldName, typeHandler);
+                return new Schema(fieldName, type, required, defaultValue, rootPath + "." + fieldName, typeHandler);
             }
         );
 
-        private static XContentSerializable newTypedDefault(String fieldName, TypeHandler typeHandler, @Nullable Object defaultValue) {
+        private static ParsedValue newTypedDefault(String fieldName, TypeHandler typeHandler, @Nullable Object defaultValue) {
             if (defaultValue == null) {
-                return NoopXContentSerializer.INSTANCE;
+                // TODO is it more natural to return a noop here? When we go to call writeTo and toXContent it'll look like it's valid
+                // maybe we want that?
+                // return NoopXContentSerializer.INSTANCE;
+                return null;
             }
 
             return typeHandler.newSerializableValue(fieldName, defaultValue);
@@ -83,11 +78,6 @@ public class GenericField implements ConfigField {
         static {
             PARSER.declareString(constructorArg(), new ParseField("name"));
             PARSER.declareString(constructorArg(), new ParseField("type"));
-            /*
-             * Dictates whether we should track how the field is set, whether in a request from a user or dynamically
-             * in code. An example of this is the dimensions field used in OpenAI text embeddings.
-             */
-            PARSER.declareBoolean(constructorArg(), new ParseField("track_origin"));
             PARSER.declareBoolean(optionalConstructorArg(), new ParseField("required"));
             PARSER.declareField(
                 optionalConstructorArg(),
@@ -122,12 +112,12 @@ public class GenericField implements ConfigField {
     }
 
     @Override
-    public void declareParserField(ConstructingObjectParser<Object, Void> parser) {
+    public void declareParserField(ConstructingObjectParser<ParsedValue[], DynamicParser.Context> parser) {
         schema.typeHandler.declareParserField(parser);
     }
 
     @Override
-    public XContentSerializable defaultValue() {
+    public ParsedValue defaultValue() {
         return schema.defaultValue();
     }
 

@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-package org.elasticsearch.xpack.inference.configuration.schema;
+package org.elasticsearch.xpack.inference.schema;
 
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
@@ -34,28 +34,28 @@ public class StringHandler extends BaseTypeHandler<String> {
         throw new IllegalArgumentException();
     }
 
-    private static class StringValue extends SerializableValue<String> {
-        StringValue(String persistentStateFieldName, String value) {
+    public static class StringValue extends SerializableValue<String> {
+        public StringValue(String persistentStateFieldName, String value) {
             super(persistentStateFieldName, value);
         }
 
-        StringValue(StreamInput in) throws IOException {
+        public StringValue(StreamInput in) throws IOException {
             super(in);
         }
 
         @Override
-        public String readValue(StreamInput in) throws IOException {
+        protected String readValue(StreamInput in) throws IOException {
             return in.readString();
         }
 
         @Override
-        public void writeValue(StreamOutput out, String value) throws IOException {
+        protected void writeValue(StreamOutput out, String value) throws IOException {
             out.writeString(value);
         }
     }
 
     @Override
-    public void declareParserField(ConstructingObjectParser<Object, Void> parser) {
+    public void declareParserField(ConstructingObjectParser<ParsedValue[], DynamicParser.Context> parser) {
         parser.declareField(
             constructorArgCall,
             (p, c) -> new StringValue(handlerConfiguration.fieldName(), p.text()),

@@ -11,6 +11,7 @@ import org.elasticsearch.ElasticsearchStatusException;
 import org.elasticsearch.TransportVersion;
 import org.elasticsearch.TransportVersions;
 import org.elasticsearch.action.ActionListener;
+import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.util.LazyInitializable;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.TimeValue;
@@ -25,6 +26,9 @@ import org.elasticsearch.inference.ModelSecrets;
 import org.elasticsearch.inference.SimilarityMeasure;
 import org.elasticsearch.inference.TaskType;
 import org.elasticsearch.rest.RestStatus;
+import org.elasticsearch.xcontent.XContentBuilder;
+import org.elasticsearch.xcontent.XContentFactory;
+import org.elasticsearch.xcontent.XContentType;
 import org.elasticsearch.xpack.core.inference.action.InferenceAction;
 import org.elasticsearch.xpack.inference.chunking.ChunkingSettingsBuilder;
 import org.elasticsearch.xpack.inference.chunking.EmbeddingRequestChunker;
@@ -38,7 +42,7 @@ import org.elasticsearch.xpack.inference.services.SenderService;
 import org.elasticsearch.xpack.inference.services.ServiceComponents;
 import org.elasticsearch.xpack.inference.services.ServiceUtils;
 import org.elasticsearch.xpack.inference.services.file.embeddings.FileEmbeddingsModel;
-import org.elasticsearch.xpack.inference.services.file.embeddings.OpenAiEmbeddingsServiceSettings;
+import org.elasticsearch.xpack.inference.services.file.embeddings.FileEmbeddingsServiceSettings;
 import org.elasticsearch.xpack.inference.services.validation.ModelValidatorBuilder;
 
 import java.util.EnumSet;
@@ -84,17 +88,10 @@ public class FileService extends SenderService {
         ActionListener<Model> parsedModelListener
     ) {
         try {
-            Map<String, Object> serviceSettingsMap = removeFromMapOrThrowIfNull(config, ModelConfigurations.SERVICE_SETTINGS);
-            Map<String, Object> taskSettingsMap = removeFromMapOrDefaultEmpty(config, ModelConfigurations.TASK_SETTINGS);
+            XContentBuilder builder = XContentFactory.contentBuilder(XContentType.JSON);
+            builder.map(config);
 
-            ChunkingSettings chunkingSettings = null;
-            if (TaskType.TEXT_EMBEDDING.equals(taskType)) {
-                chunkingSettings = ChunkingSettingsBuilder.fromMap(
-                    removeFromMapOrDefaultEmpty(config, ModelConfigurations.CHUNKING_SETTINGS)
-                );
-            }
-
-            moveModelFromTaskToServiceSettings(taskSettingsMap, serviceSettingsMap);
+            var stringConfig = Strings.toString(builder);
 
             FileModel model = createModel(
                 inferenceEntityId,
@@ -315,7 +312,7 @@ public class FileService extends SenderService {
             var similarityFromModel = serviceSettings.similarity();
             var similarityToUse = similarityFromModel == null ? SimilarityMeasure.DOT_PRODUCT : similarityFromModel;
 
-            var updatedServiceSettings = new OpenAiEmbeddingsServiceSettings(
+            var updatedServiceSettings = new FileEmbeddingsServiceSettings(
                 serviceSettings.modelId(),
                 serviceSettings.uri(),
                 serviceSettings.organizationId(),

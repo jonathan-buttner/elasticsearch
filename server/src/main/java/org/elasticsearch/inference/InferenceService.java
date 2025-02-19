@@ -42,6 +42,7 @@ public interface InferenceService extends Closeable {
      * @param config                Configuration options including the secrets
      * @param parsedModelListener   A listener which will handle the resulting model or failure
      */
+    // TODO change this to take a new object instead of config that encapsulates both the map and a ByteReference
     void parseRequestConfig(String modelId, TaskType taskType, Map<String, Object> config, ActionListener<Model> parsedModelListener);
 
     /**
@@ -57,6 +58,7 @@ public interface InferenceService extends Closeable {
      * @param secrets Sensitive configuration options (e.g. api key)
      * @return The parsed {@link Model}
      */
+    // TODO change this to take a new object instead of config that encapsulates both the map and a ByteReference
     Model parsePersistedConfigWithSecrets(String modelId, TaskType taskType, Map<String, Object> config, Map<String, Object> secrets);
 
     /**
@@ -70,6 +72,7 @@ public interface InferenceService extends Closeable {
      * @param config Configuration options
      * @return The parsed {@link Model}
      */
+    // TODO change this to take a new object instead of config that encapsulates both the map and a ByteReference
     Model parsePersistedConfig(String modelId, TaskType taskType, Map<String, Object> config);
 
     InferenceServiceConfiguration getConfiguration();

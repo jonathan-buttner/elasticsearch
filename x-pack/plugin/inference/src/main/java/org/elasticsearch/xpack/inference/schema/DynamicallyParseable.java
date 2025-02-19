@@ -5,10 +5,10 @@
  * 2.0.
  */
 
-package org.elasticsearch.xpack.inference.configuration.schema;
+package org.elasticsearch.xpack.inference.schema;
 
 import org.elasticsearch.xcontent.ConstructingObjectParser;
 
 public interface DynamicallyParseable {
-    void declareParserField(ConstructingObjectParser<Object, Void> parser);
+    void declareParserField(ConstructingObjectParser<ParsedValue[], DynamicParser.Context> parser);
 }

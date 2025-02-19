@@ -5,11 +5,10 @@
  * 2.0.
  */
 
-package org.elasticsearch.xpack.inference.configuration.schema;
+package org.elasticsearch.xpack.inference.schema;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.elasticsearch.core.Nullable;
 import org.elasticsearch.inference.TaskType;
 import org.elasticsearch.xcontent.ConstructingObjectParser;
 import org.elasticsearch.xcontent.ParseField;
@@ -17,28 +16,31 @@ import org.elasticsearch.xcontent.XContentFactory;
 import org.elasticsearch.xcontent.XContentParser;
 import org.elasticsearch.xcontent.XContentParserConfiguration;
 import org.elasticsearch.xcontent.XContentType;
+import org.elasticsearch.xpack.inference.services.ConfigurationParseContext;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import static org.elasticsearch.xcontent.ConstructingObjectParser.constructorArg;
-import static org.elasticsearch.xpack.inference.configuration.schema.RateLimitField.RATE_LIMIT_FIELD;
+import static org.elasticsearch.xcontent.ConstructingObjectParser.optionalConstructorArg;
+import static org.elasticsearch.xpack.inference.schema.RateLimitField.RATE_LIMIT_FIELD;
 
-public record ConfigurationSystem(@Nullable ServiceConfiguration serviceConfiguration) {
+public record ConfigurationSystem(ServiceConfiguration serviceConfiguration) {
     private static final Logger logger = LogManager.getLogger(ConfigurationSystem.class);
-    private static final ConfigurationSystem EMPTY_CONFIGURATION = new ConfigurationSystem(null);
+    private static final ConfigurationSystem EMPTY_CONFIGURATION = new ConfigurationSystem(new ServiceConfiguration("", "", Map.of()));
 
-    public record ServiceConfiguration(String schemaVersion, String serviceName, Map<String, ConfigTaskType> taskTypes) {
+    public record ServiceConfiguration(String schemaVersion, String serviceName, Map<TaskType, ConfigTaskType> taskTypes) {
         @SuppressWarnings("unchecked")
         private static final ConstructingObjectParser<ServiceConfiguration, String> PARSER = new ConstructingObjectParser<>(
             ServiceConfiguration.class.getSimpleName(),
             false,
             (args) -> {
                 var taskTypeList = (List<ConfigTaskType>) args[2];
-                var taskTypes = new HashMap<String, ConfigTaskType>();
+                var taskTypes = new HashMap<TaskType, ConfigTaskType>();
 
-                taskTypeList.forEach((configTaskType -> taskTypes.put(configTaskType.taskType.toString(), configTaskType)));
+                taskTypeList.forEach((configTaskType -> taskTypes.put(configTaskType.taskType, configTaskType)));
 
                 return new ServiceConfiguration((String) args[0], (String) args[1], taskTypes);
             }
@@ -55,16 +57,59 @@ public record ConfigurationSystem(@Nullable ServiceConfiguration serviceConfigur
         }
     }
 
-    public record ConfigTaskType(TaskType taskType, ConfigServiceSettings configServiceSettings) {
+    public record ConfigTaskType(
+        TaskType taskType,
+        ConfigServiceSettings configServiceSettings,
+        DynamicParser createEntityParser,
+        DynamicParser persistentStateParser
+    ) {
+
+        @SuppressWarnings("unchecked")
         private static final ConstructingObjectParser<ConfigTaskType, String> PARSER = new ConstructingObjectParser<>(
             ConfigTaskType.class.getSimpleName(),
             false,
             (args, c) -> {
+                var currentPath = c + ".service_settings";
                 var taskType = TaskType.fromStringOrStatusException((String) args[0]);
+                var configServiceSettings = (ConfigServiceSettings) args[1];
 
-                return new ConfigTaskType(taskType, (ConfigServiceSettings) args[1]);
+                var serviceSettingLocations = createLocations(configServiceSettings, currentPath);
+
+                List<FieldLocation> createEntityRequestFields = Objects.requireNonNullElse(
+                    (List<FieldLocation>) args[2],
+                    serviceSettingLocations
+                );
+
+                List<FieldLocation> persistentStateFields = Objects.requireNonNullElse(
+                    (List<FieldLocation>) args[3],
+                    serviceSettingLocations
+                );
+
+                return new ConfigTaskType(
+                    taskType,
+                    configServiceSettings,
+                    new DynamicParser(
+                        "create_entity_request",
+                        createEntityRequestFields,
+                        configServiceSettings,
+                        ConfigurationParseContext.REQUEST
+                    ),
+                    new DynamicParser(
+                        "persistent_state_request",
+                        persistentStateFields,
+                        configServiceSettings,
+                        ConfigurationParseContext.REQUEST
+                    )
+                );
             }
         );
+
+        private static List<FieldLocation> createLocations(ConfigServiceSettings configServiceSettings, String path) {
+            return configServiceSettings.configFields.values()
+                .stream()
+                .map((configField) -> FieldLocation.of(configField.schemaFieldName(), path))
+                .toList();
+        }
 
         static {
             PARSER.declareString(constructorArg(), new ParseField("type"));
@@ -73,9 +118,24 @@ public record ConfigurationSystem(@Nullable ServiceConfiguration serviceConfigur
                 (p, c) -> ConfigServiceSettings.PARSER.apply(p, c + ".service_settings"),
                 new ParseField("service_settings")
             );
+            PARSER.declareObjectArray(
+                optionalConstructorArg(),
+                (p, c) -> FieldLocation.PARSER.apply(p, null),
+                new ParseField("create_entity_request")
+            );
+            PARSER.declareObjectArray(
+                optionalConstructorArg(),
+                (p, c) -> FieldLocation.PARSER.apply(p, null),
+                new ParseField("persistent_state")
+            );
         }
     }
 
+    /**
+     *
+     * @param configFields does not include the root path in the key, only the field name
+     * @param serviceSettings
+     */
     public record ConfigServiceSettings(Map<String, ConfigField> configFields, Map<String, ConfigField> serviceSettings) {
         @SuppressWarnings("unchecked")
         private static final ConstructingObjectParser<ConfigServiceSettings, String> PARSER = new ConstructingObjectParser<>(
@@ -102,6 +162,23 @@ public record ConfigurationSystem(@Nullable ServiceConfiguration serviceConfigur
         static {
             PARSER.declareObject(constructorArg(), RateLimitField::parseSchema, new ParseField(RATE_LIMIT_FIELD));
             PARSER.declareObjectArray(constructorArg(), (p, c) -> GenericField.parseSchema(p, c + ".fields"), new ParseField("fields"));
+        }
+    }
+
+    public record FieldLocation(String name, String rootPath, String path) {
+
+        public static FieldLocation of(String name, String rootPath) {
+            return new FieldLocation(name, rootPath, rootPath + "." + name);
+        }
+
+        private static final ConstructingObjectParser<FieldLocation, Void> PARSER = new ConstructingObjectParser<>(
+            FieldLocation.class.getSimpleName(),
+            (args) -> FieldLocation.of((String) args[0], (String) args[1])
+        );
+
+        static {
+            PARSER.declareString(constructorArg(), new ParseField("name"));
+            PARSER.declareString(constructorArg(), new ParseField("path"));
         }
     }
 

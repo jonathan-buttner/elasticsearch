@@ -27,8 +27,8 @@ public class FileEmbeddingsModel extends FileModel {
             return model;
         }
 
-        var requestTaskSettings = OpenAiEmbeddingsRequestTaskSettings.fromMap(taskSettings);
-        return new FileEmbeddingsModel(model, OpenAiEmbeddingsTaskSettings.of(model.getTaskSettings(), requestTaskSettings));
+        var requestTaskSettings = FileEmbeddingsRequestTaskSettings.fromMap(taskSettings);
+        return new FileEmbeddingsModel(model, FileEmbeddingsTaskSettings.of(model.getTaskSettings(), requestTaskSettings));
     }
 
     public FileEmbeddingsModel(
@@ -45,8 +45,8 @@ public class FileEmbeddingsModel extends FileModel {
             inferenceEntityId,
             taskType,
             service,
-            OpenAiEmbeddingsServiceSettings.fromMap(serviceSettings, context),
-            OpenAiEmbeddingsTaskSettings.fromMap(taskSettings, context),
+            FileEmbeddingsServiceSettings.fromMap(serviceSettings, context),
+            FileEmbeddingsTaskSettings.fromMap(taskSettings, context),
             chunkingSettings,
             DefaultSecretSettings.fromMap(secrets)
         );
@@ -57,8 +57,8 @@ public class FileEmbeddingsModel extends FileModel {
         String inferenceEntityId,
         TaskType taskType,
         String service,
-        OpenAiEmbeddingsServiceSettings serviceSettings,
-        OpenAiEmbeddingsTaskSettings taskSettings,
+        FileEmbeddingsServiceSettings serviceSettings,
+        FileEmbeddingsTaskSettings taskSettings,
         ChunkingSettings chunkingSettings,
         @Nullable DefaultSecretSettings secrets
     ) {
@@ -70,22 +70,22 @@ public class FileEmbeddingsModel extends FileModel {
         );
     }
 
-    private FileEmbeddingsModel(FileEmbeddingsModel originalModel, OpenAiEmbeddingsTaskSettings taskSettings) {
+    private FileEmbeddingsModel(FileEmbeddingsModel originalModel, FileEmbeddingsTaskSettings taskSettings) {
         super(originalModel, taskSettings);
     }
 
-    public FileEmbeddingsModel(FileEmbeddingsModel originalModel, OpenAiEmbeddingsServiceSettings serviceSettings) {
+    public FileEmbeddingsModel(FileEmbeddingsModel originalModel, FileEmbeddingsServiceSettings serviceSettings) {
         super(originalModel, serviceSettings);
     }
 
     @Override
-    public OpenAiEmbeddingsServiceSettings getServiceSettings() {
-        return (OpenAiEmbeddingsServiceSettings) super.getServiceSettings();
+    public FileEmbeddingsServiceSettings getServiceSettings() {
+        return (FileEmbeddingsServiceSettings) super.getServiceSettings();
     }
 
     @Override
-    public OpenAiEmbeddingsTaskSettings getTaskSettings() {
-        return (OpenAiEmbeddingsTaskSettings) super.getTaskSettings();
+    public FileEmbeddingsTaskSettings getTaskSettings() {
+        return (FileEmbeddingsTaskSettings) super.getTaskSettings();
     }
 
     @Override

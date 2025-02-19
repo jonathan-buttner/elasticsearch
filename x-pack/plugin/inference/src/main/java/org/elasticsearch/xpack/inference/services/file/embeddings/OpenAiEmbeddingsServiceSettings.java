@@ -12,43 +12,37 @@ import org.elasticsearch.TransportVersions;
 import org.elasticsearch.common.ValidationException;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
+import org.elasticsearch.common.xcontent.XContentHelper;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.index.mapper.vectors.DenseVectorFieldMapper;
-import org.elasticsearch.inference.ModelConfigurations;
+import org.elasticsearch.inference.ParsableObject;
 import org.elasticsearch.inference.ServiceSettings;
 import org.elasticsearch.inference.SimilarityMeasure;
+import org.elasticsearch.inference.TaskType;
 import org.elasticsearch.xcontent.XContentBuilder;
+import org.elasticsearch.xcontent.XContentParser;
+import org.elasticsearch.xcontent.XContentParserConfiguration;
+import org.elasticsearch.xcontent.XContentType;
+import org.elasticsearch.xpack.inference.schema.ConfigurationSystem;
+import org.elasticsearch.xpack.inference.schema.IntegerHandler;
+import org.elasticsearch.xpack.inference.schema.RateLimitField;
 import org.elasticsearch.xpack.inference.services.ConfigurationParseContext;
-import org.elasticsearch.xpack.inference.services.file.FileService;
 import org.elasticsearch.xpack.inference.services.file.OpenAiRateLimitServiceSettings;
 import org.elasticsearch.xpack.inference.services.settings.FilteredXContentObject;
 import org.elasticsearch.xpack.inference.services.settings.RateLimitSettings;
 
 import java.io.IOException;
 import java.net.URI;
-import java.util.Map;
 import java.util.Objects;
 
 import static org.elasticsearch.xpack.inference.services.ServiceFields.DIMENSIONS;
-import static org.elasticsearch.xpack.inference.services.ServiceFields.MAX_INPUT_TOKENS;
-import static org.elasticsearch.xpack.inference.services.ServiceFields.MODEL_ID;
-import static org.elasticsearch.xpack.inference.services.ServiceFields.SIMILARITY;
-import static org.elasticsearch.xpack.inference.services.ServiceFields.URL;
-import static org.elasticsearch.xpack.inference.services.ServiceUtils.convertToUri;
-import static org.elasticsearch.xpack.inference.services.ServiceUtils.createOptionalUri;
-import static org.elasticsearch.xpack.inference.services.ServiceUtils.extractOptionalPositiveInteger;
-import static org.elasticsearch.xpack.inference.services.ServiceUtils.extractOptionalString;
-import static org.elasticsearch.xpack.inference.services.ServiceUtils.extractRequiredString;
-import static org.elasticsearch.xpack.inference.services.ServiceUtils.extractSimilarity;
-import static org.elasticsearch.xpack.inference.services.ServiceUtils.removeAsType;
-import static org.elasticsearch.xpack.inference.services.openai.OpenAiServiceFields.ORGANIZATION;
 
 /**
  * Defines the service settings for interacting with OpenAI's text embedding models.
  */
 public class OpenAiEmbeddingsServiceSettings extends FilteredXContentObject implements ServiceSettings, OpenAiRateLimitServiceSettings {
 
-    public static final String NAME = "openai_service_settings";
+    public static final String NAME = "openai_service_settings2";
 
     static final String DIMENSIONS_SET_BY_USER = "dimensions_set_by_user";
     // The rate limit for usage tier 1 is 3000 request per minute for the text embedding models
@@ -56,170 +50,59 @@ public class OpenAiEmbeddingsServiceSettings extends FilteredXContentObject impl
     // 3000 requests per minute
     private static final RateLimitSettings DEFAULT_RATE_LIMIT_SETTINGS = new RateLimitSettings(3000);
 
-    public static OpenAiEmbeddingsServiceSettings fromMap(Map<String, Object> map, ConfigurationParseContext context) {
-        return switch (context) {
-            case REQUEST -> fromRequestMap(map);
-            case PERSISTENT -> fromPersistentMap(map);
-        };
-    }
-
-    private static OpenAiEmbeddingsServiceSettings fromPersistentMap(Map<String, Object> map) {
-        // Reading previously persisted config, assume the validation
-        // passed at that time and never throw.
-        ValidationException validationException = new ValidationException();
-
-        var commonFields = fromMap(map, validationException, ConfigurationParseContext.PERSISTENT);
-
-        Boolean dimensionsSetByUser = removeAsType(map, DIMENSIONS_SET_BY_USER, Boolean.class);
-        if (dimensionsSetByUser == null) {
-            // Setting added in 8.13, default to false for configs created prior
-            dimensionsSetByUser = Boolean.FALSE;
-        }
-
-        return new OpenAiEmbeddingsServiceSettings(commonFields, dimensionsSetByUser);
-    }
-
-    private static OpenAiEmbeddingsServiceSettings fromRequestMap(Map<String, Object> map) {
-        ValidationException validationException = new ValidationException();
-
-        var commonFields = fromMap(map, validationException, ConfigurationParseContext.REQUEST);
-
-        if (validationException.validationErrors().isEmpty() == false) {
-            throw validationException;
-        }
-
-        return new OpenAiEmbeddingsServiceSettings(commonFields, commonFields.dimensions != null);
-    }
-
-    private static CommonFields fromMap(
-        Map<String, Object> map,
-        ValidationException validationException,
+    public static OpenAiEmbeddingsServiceSettings fromMap(
+        ConfigurationSystem system,
+        ParsableObject config,
         ConfigurationParseContext context
     ) {
+        try (
+            XContentParser jsonParser = XContentHelper.createParser(
+                XContentParserConfiguration.EMPTY,
+                config.configRef(),
+                XContentType.JSON
+            )
+        ) {
+            var taskTypeConfig = Objects.requireNonNull(system.serviceConfiguration().taskTypes().get(TaskType.TEXT_EMBEDDING));
 
-        String url = extractOptionalString(map, URL, ModelConfigurations.SERVICE_SETTINGS, validationException);
-        String organizationId = extractOptionalString(map, ORGANIZATION, ModelConfigurations.SERVICE_SETTINGS, validationException);
-        SimilarityMeasure similarity = extractSimilarity(map, ModelConfigurations.SERVICE_SETTINGS, validationException);
-        Integer maxInputTokens = extractOptionalPositiveInteger(
-            map,
-            MAX_INPUT_TOKENS,
-            ModelConfigurations.SERVICE_SETTINGS,
-            validationException
-        );
-        Integer dims = extractOptionalPositiveInteger(map, DIMENSIONS, ModelConfigurations.SERVICE_SETTINGS, validationException);
-        URI uri = convertToUri(url, URL, ModelConfigurations.SERVICE_SETTINGS, validationException);
-        String modelId = extractRequiredString(map, MODEL_ID, ModelConfigurations.SERVICE_SETTINGS, validationException);
-        RateLimitSettings rateLimitSettings = RateLimitSettings.of(
-            map,
-            DEFAULT_RATE_LIMIT_SETTINGS,
-            validationException,
-            FileService.NAME,
-            context
-        );
+            return switch (context) {
+                case REQUEST -> fromRequest(taskTypeConfig, jsonParser);
+                case PERSISTENT -> fromPersistent(taskTypeConfig, jsonParser);
+            };
+        } catch (IOException e) {
+            throw new ValidationException(e);
+        }
 
-        return new CommonFields(modelId, uri, organizationId, similarity, maxInputTokens, dims, rateLimitSettings);
     }
 
-    private record CommonFields(
-        String modelId,
-        @Nullable URI uri,
-        @Nullable String organizationId,
-        @Nullable SimilarityMeasure similarity,
-        @Nullable Integer maxInputTokens,
-        @Nullable Integer dimensions,
-        RateLimitSettings rateLimitSettings
-    ) {}
+    private static OpenAiEmbeddingsServiceSettings fromPersistent(ConfigurationSystem.ConfigTaskType taskTypeConfig, XContentParser parser)
+        throws IOException {
+        var parsedResults = taskTypeConfig.persistentStateParser().parse(parser);
+        var dimensions = parsedResults.get(DIMENSIONS, IntegerHandler.IntegerValue.class);
+        var rateLimit = parsedResults.getOrThrow(RateLimitSettings.FIELD_NAME, RateLimitField.Value.class);
 
-    private final String modelId;
-    private final URI uri;
-    private final String organizationId;
-    private final SimilarityMeasure similarity;
-    private final Integer dimensions;
-    private final Integer maxInputTokens;
-    private final Boolean dimensionsSetByUser;
+        return new OpenAiEmbeddingsServiceSettings(dimensions, new RateLimitSettings(rateLimit.getRequestsPerMinuteLimit()));
+    }
+
+    private static OpenAiEmbeddingsServiceSettings fromRequest(ConfigurationSystem.ConfigTaskType taskTypeConfig, XContentParser parser)
+        throws IOException {
+        var parsedResults = taskTypeConfig.createEntityParser().parse(parser);
+        var dimensions = parsedResults.get(DIMENSIONS, IntegerHandler.IntegerValue.class);
+        var rateLimit = parsedResults.getOrThrow(RateLimitSettings.FIELD_NAME, RateLimitField.Value.class);
+
+        return new OpenAiEmbeddingsServiceSettings(dimensions, new RateLimitSettings(rateLimit.getRequestsPerMinuteLimit()));
+    }
+
+    private final IntegerHandler.IntegerValue dimensions;
     private final RateLimitSettings rateLimitSettings;
 
-    public OpenAiEmbeddingsServiceSettings(
-        String modelId,
-        @Nullable URI uri,
-        @Nullable String organizationId,
-        @Nullable SimilarityMeasure similarity,
-        @Nullable Integer dimensions,
-        @Nullable Integer maxInputTokens,
-        Boolean dimensionsSetByUser,
-        @Nullable RateLimitSettings rateLimitSettings
-    ) {
-        this.uri = uri;
-        this.modelId = Objects.requireNonNull(modelId);
-        this.organizationId = organizationId;
-        this.similarity = similarity;
+    public OpenAiEmbeddingsServiceSettings(@Nullable IntegerHandler.IntegerValue dimensions, RateLimitSettings rateLimitSettings) {
         this.dimensions = dimensions;
-        this.maxInputTokens = maxInputTokens;
-        this.dimensionsSetByUser = Objects.requireNonNull(dimensionsSetByUser);
         this.rateLimitSettings = Objects.requireNonNullElse(rateLimitSettings, DEFAULT_RATE_LIMIT_SETTINGS);
     }
 
-    OpenAiEmbeddingsServiceSettings(
-        String modelId,
-        @Nullable String uri,
-        @Nullable String organizationId,
-        @Nullable SimilarityMeasure similarity,
-        @Nullable Integer dimensions,
-        @Nullable Integer maxInputTokens,
-        Boolean dimensionsSetByUser,
-        @Nullable RateLimitSettings rateLimitSettings
-    ) {
-        this(
-            modelId,
-            createOptionalUri(uri),
-            organizationId,
-            similarity,
-            dimensions,
-            maxInputTokens,
-            dimensionsSetByUser,
-            rateLimitSettings
-        );
-    }
-
     public OpenAiEmbeddingsServiceSettings(StreamInput in) throws IOException {
-        uri = createOptionalUri(in.readOptionalString());
-        organizationId = in.readOptionalString();
-        if (in.getTransportVersion().onOrAfter(TransportVersions.V_8_12_0)) {
-            similarity = in.readOptionalEnum(SimilarityMeasure.class);
-            dimensions = in.readOptionalVInt();
-            maxInputTokens = in.readOptionalVInt();
-        } else {
-            similarity = null;
-            dimensions = null;
-            maxInputTokens = null;
-        }
-
-        if (in.getTransportVersion().onOrAfter(TransportVersions.V_8_13_0)) {
-            dimensionsSetByUser = in.readBoolean();
-            modelId = in.readString();
-        } else {
-            dimensionsSetByUser = false;
-            modelId = "unset";
-        }
-
-        if (in.getTransportVersion().onOrAfter(TransportVersions.V_8_15_0)) {
-            rateLimitSettings = new RateLimitSettings(in);
-        } else {
-            rateLimitSettings = DEFAULT_RATE_LIMIT_SETTINGS;
-        }
-    }
-
-    private OpenAiEmbeddingsServiceSettings(CommonFields fields, Boolean dimensionsSetByUser) {
-        this(
-            fields.modelId,
-            fields.uri,
-            fields.organizationId,
-            fields.similarity,
-            fields.dimensions,
-            fields.maxInputTokens,
-            dimensionsSetByUser,
-            fields.rateLimitSettings
-        );
+        dimensions = in.readOptionalWriteable(IntegerHandler.IntegerValue::new);
+        rateLimitSettings = new RateLimitSettings(in);
     }
 
     @Override
@@ -229,36 +112,35 @@ public class OpenAiEmbeddingsServiceSettings extends FilteredXContentObject impl
 
     @Override
     public URI uri() {
-        return uri;
+        return null;
     }
 
     @Override
     public String organizationId() {
-        return organizationId;
+        return "";
     }
 
     @Override
     public SimilarityMeasure similarity() {
-        return similarity;
+        return SimilarityMeasure.L2_NORM;
     }
 
     @Override
     public Integer dimensions() {
-        return dimensions;
-    }
+        if (dimensions != null) {
+            return dimensions.getValue();
+        }
 
-    @Override
-    public Boolean dimensionsSetByUser() {
-        return dimensionsSetByUser;
+        return null;
     }
 
     public Integer maxInputTokens() {
-        return maxInputTokens;
+        return null;
     }
 
     @Override
     public String modelId() {
-        return modelId;
+        return "";
     }
 
     @Override
@@ -276,9 +158,9 @@ public class OpenAiEmbeddingsServiceSettings extends FilteredXContentObject impl
         builder.startObject();
 
         toXContentFragmentOfExposedFields(builder, params);
-
-        if (dimensionsSetByUser != null) {
-            builder.field(DIMENSIONS_SET_BY_USER, dimensionsSetByUser);
+        // TODO if we returned a noop we wouldn't need the null check here
+        if (dimensions != null) {
+            dimensions.toXContentFragmentOfHiddenFields(builder, params);
         }
 
         builder.endObject();
@@ -287,21 +169,8 @@ public class OpenAiEmbeddingsServiceSettings extends FilteredXContentObject impl
 
     @Override
     protected XContentBuilder toXContentFragmentOfExposedFields(XContentBuilder builder, Params params) throws IOException {
-        builder.field(MODEL_ID, modelId);
-        if (uri != null) {
-            builder.field(URL, uri.toString());
-        }
-        if (organizationId != null) {
-            builder.field(ORGANIZATION, organizationId);
-        }
-        if (similarity != null) {
-            builder.field(SIMILARITY, similarity);
-        }
         if (dimensions != null) {
-            builder.field(DIMENSIONS, dimensions);
-        }
-        if (maxInputTokens != null) {
-            builder.field(MAX_INPUT_TOKENS, maxInputTokens);
+            dimensions.toXContentFragment(builder, params);
         }
         rateLimitSettings.toXContent(builder, params);
 
@@ -315,24 +184,9 @@ public class OpenAiEmbeddingsServiceSettings extends FilteredXContentObject impl
 
     @Override
     public void writeTo(StreamOutput out) throws IOException {
-        var uriToWrite = uri != null ? uri.toString() : null;
-        out.writeOptionalString(uriToWrite);
-        out.writeOptionalString(organizationId);
+        out.writeOptionalWriteable(dimensions);
 
-        if (out.getTransportVersion().onOrAfter(TransportVersions.V_8_12_0)) {
-            out.writeOptionalEnum(SimilarityMeasure.translateSimilarity(similarity, out.getTransportVersion()));
-            out.writeOptionalVInt(dimensions);
-            out.writeOptionalVInt(maxInputTokens);
-        }
-
-        if (out.getTransportVersion().onOrAfter(TransportVersions.V_8_13_0)) {
-            out.writeBoolean(dimensionsSetByUser);
-            out.writeString(modelId);
-        }
-
-        if (out.getTransportVersion().onOrAfter(TransportVersions.V_8_15_0)) {
-            rateLimitSettings.writeTo(out);
-        }
+        rateLimitSettings.writeTo(out);
     }
 
     @Override
@@ -340,18 +194,11 @@ public class OpenAiEmbeddingsServiceSettings extends FilteredXContentObject impl
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         OpenAiEmbeddingsServiceSettings that = (OpenAiEmbeddingsServiceSettings) o;
-        return Objects.equals(uri, that.uri)
-            && Objects.equals(modelId, that.modelId)
-            && Objects.equals(organizationId, that.organizationId)
-            && Objects.equals(similarity, that.similarity)
-            && Objects.equals(dimensions, that.dimensions)
-            && Objects.equals(maxInputTokens, that.maxInputTokens)
-            && Objects.equals(dimensionsSetByUser, that.dimensionsSetByUser)
-            && Objects.equals(rateLimitSettings, that.rateLimitSettings);
+        return Objects.equals(dimensions, that.dimensions) && Objects.equals(rateLimitSettings, that.rateLimitSettings);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(uri, modelId, organizationId, similarity, dimensions, maxInputTokens, dimensionsSetByUser, rateLimitSettings);
+        return Objects.hash(dimensions, rateLimitSettings);
     }
 }

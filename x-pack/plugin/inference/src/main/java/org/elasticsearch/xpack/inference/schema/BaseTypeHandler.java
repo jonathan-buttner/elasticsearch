@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-package org.elasticsearch.xpack.inference.configuration.schema;
+package org.elasticsearch.xpack.inference.schema;
 
 import java.util.Objects;
 import java.util.function.BiConsumer;
@@ -13,19 +13,20 @@ import java.util.function.BiConsumer;
 import static org.elasticsearch.xcontent.ConstructingObjectParser.constructorArg;
 import static org.elasticsearch.xcontent.ConstructingObjectParser.optionalConstructorArg;
 
-public abstract class BaseTypeHandler<T> implements TypeHandler {
+abstract class BaseTypeHandler<T> implements TypeHandler {
     private static final String ILLEGAL_ARG_MESSAGE = "Invalid value [%s], expected a %s but is a %s";
 
     private final String typeName;
     protected final HandlerConfiguration handlerConfiguration;
-    protected final BiConsumer<Object, XContentSerializable> constructorArgCall;
+    protected final BiConsumer<ParsedValue[], ParsedValue> constructorArgCall;
 
-    public BaseTypeHandler(String typeName, HandlerConfiguration handlerConfiguration) {
+    BaseTypeHandler(String typeName, HandlerConfiguration handlerConfiguration) {
         this.typeName = Objects.requireNonNull(typeName);
         this.handlerConfiguration = Objects.requireNonNull(handlerConfiguration);
         constructorArgCall = this.handlerConfiguration.required() ? constructorArg() : optionalConstructorArg();
     }
 
+    @Override
     public SerializableValue<T> newSerializableValue(String persistentStateFieldName, Object value) {
         try {
             var validatedTypedValue = validate(value);

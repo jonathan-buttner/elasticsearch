@@ -5,23 +5,24 @@
  * 2.0.
  */
 
-package org.elasticsearch.xpack.inference.configuration.schema;
+package org.elasticsearch.xpack.inference.schema;
 
 import org.elasticsearch.xcontent.ToXContent;
 import org.elasticsearch.xcontent.XContentBuilder;
 
 import java.io.IOException;
 
-public class NoopXContentSerializer implements XContentSerializable {
+public class NoopXContentSerializer implements ParsedValue {
     public static final NoopXContentSerializer INSTANCE = new NoopXContentSerializer();
 
     @Override
-    public XContentBuilder toXContent(XContentBuilder builder, ToXContent.Params params) throws IOException {
+    public XContentBuilder toXContentFragment(XContentBuilder builder, ToXContent.Params params) throws IOException {
         return builder;
     }
 
     @Override
-    public XContentBuilder toXContentWithName(XContentBuilder builder, ToXContent.Params params, String fieldName) throws IOException {
+    public XContentBuilder toXContentFragmentWithName(XContentBuilder builder, ToXContent.Params params, String fieldName)
+        throws IOException {
         return builder;
     }
 }

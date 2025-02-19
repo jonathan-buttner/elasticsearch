@@ -18,24 +18,24 @@ import static org.elasticsearch.xpack.inference.services.openai.OpenAiServiceFie
 
 /**
  * This class handles extracting OpenAI task settings from a request. The difference between this class and
- * {@link OpenAiEmbeddingsTaskSettings} is that this class considers all fields as optional. It will not throw an error if a field
+ * {@link FileEmbeddingsTaskSettings} is that this class considers all fields as optional. It will not throw an error if a field
  * is missing. This allows overriding persistent task settings.
  * @param user a unique identifier representing your end-user, which can help OpenAI to monitor and detect abuse
  */
-public record OpenAiEmbeddingsRequestTaskSettings(@Nullable String user) {
+public record FileEmbeddingsRequestTaskSettings(@Nullable String user) {
 
-    public static final OpenAiEmbeddingsRequestTaskSettings EMPTY_SETTINGS = new OpenAiEmbeddingsRequestTaskSettings(null);
+    public static final FileEmbeddingsRequestTaskSettings EMPTY_SETTINGS = new FileEmbeddingsRequestTaskSettings(null);
 
     /**
      * Extracts the task settings from a map. All settings are considered optional and the absence of a setting
      * does not throw an error.
      *
      * @param map the settings received from a request
-     * @return a {@link OpenAiEmbeddingsRequestTaskSettings}
+     * @return a {@link FileEmbeddingsRequestTaskSettings}
      */
-    public static OpenAiEmbeddingsRequestTaskSettings fromMap(Map<String, Object> map) {
+    public static FileEmbeddingsRequestTaskSettings fromMap(Map<String, Object> map) {
         if (map.isEmpty()) {
-            return OpenAiEmbeddingsRequestTaskSettings.EMPTY_SETTINGS;
+            return FileEmbeddingsRequestTaskSettings.EMPTY_SETTINGS;
         }
 
         ValidationException validationException = new ValidationException();
@@ -46,6 +46,6 @@ public record OpenAiEmbeddingsRequestTaskSettings(@Nullable String user) {
             throw validationException;
         }
 
-        return new OpenAiEmbeddingsRequestTaskSettings(user);
+        return new FileEmbeddingsRequestTaskSettings(user);
     }
 }
