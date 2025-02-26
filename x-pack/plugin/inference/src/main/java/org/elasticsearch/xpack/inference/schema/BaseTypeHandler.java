@@ -27,16 +27,16 @@ abstract class BaseTypeHandler<T> implements TypeHandler {
     }
 
     @Override
-    public SerializableValue<T> newSerializableValue(String persistentStateFieldName, Object value) {
+    public SerializableValue<T> newSerializableValue(String persistentStateFieldName, Object value, boolean setInCreationRequestByUser) {
         try {
             var validatedTypedValue = validate(value);
-            return newValue(persistentStateFieldName, validatedTypedValue);
+            return newValue(persistentStateFieldName, validatedTypedValue, setInCreationRequestByUser);
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException(String.format(ILLEGAL_ARG_MESSAGE, value, typeName, value.getClass().getSimpleName()));
         }
     }
 
-    protected abstract SerializableValue<T> newValue(String persistentStateFieldName, T value);
+    protected abstract SerializableValue<T> newValue(String persistentStateFieldName, T value, boolean isSetInCreationRequest);
 
     protected abstract T validate(Object value);
 

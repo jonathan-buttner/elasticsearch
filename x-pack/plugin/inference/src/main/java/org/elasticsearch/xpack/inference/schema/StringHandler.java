@@ -12,6 +12,7 @@ import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.xcontent.ConstructingObjectParser;
 import org.elasticsearch.xcontent.ObjectParser;
 import org.elasticsearch.xcontent.ParseField;
+import org.elasticsearch.xpack.inference.services.ConfigurationParseContext;
 
 import java.io.IOException;
 
@@ -21,8 +22,8 @@ public class StringHandler extends BaseTypeHandler<String> {
     }
 
     @Override
-    protected SerializableValue<String> newValue(String persistentStateFieldName, String value) {
-        return new StringValue(persistentStateFieldName, value);
+    protected SerializableValue<String> newValue(String persistentStateFieldName, String value, boolean setInCreationRequestByUser) {
+        return new StringValue(persistentStateFieldName, value, setInCreationRequestByUser);
     }
 
     @Override
@@ -35,8 +36,12 @@ public class StringHandler extends BaseTypeHandler<String> {
     }
 
     public static class StringValue extends SerializableValue<String> {
-        public StringValue(String persistentStateFieldName, String value) {
-            super(persistentStateFieldName, value);
+        public StringValue(String persistentStateFieldName, String value, boolean setInCreationRequestByUser) {
+            super(persistentStateFieldName, value, setInCreationRequestByUser);
+        }
+
+        public StringValue(String persistentStateFieldName, String value, ConfigurationParseContext parseContext) {
+            super(persistentStateFieldName, value, parseContext);
         }
 
         public StringValue(StreamInput in) throws IOException {
@@ -58,7 +63,7 @@ public class StringHandler extends BaseTypeHandler<String> {
     public void declareParserField(ConstructingObjectParser<ParsedValue[], DynamicParser.Context> parser) {
         parser.declareField(
             constructorArgCall,
-            (p, c) -> new StringValue(handlerConfiguration.fieldName(), p.text()),
+            (p, c) -> new StringValue(handlerConfiguration.fieldName(), p.text(), c.parseContext()),
             new ParseField(handlerConfiguration.fieldName()),
             ObjectParser.ValueType.STRING
         );

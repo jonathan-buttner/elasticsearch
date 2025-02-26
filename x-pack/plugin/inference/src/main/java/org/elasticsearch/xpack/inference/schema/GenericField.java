@@ -72,7 +72,8 @@ public class GenericField implements ConfigField {
                 return null;
             }
 
-            return typeHandler.newSerializableValue(fieldName, defaultValue);
+            // A default value isn't set by the user
+            return typeHandler.newSerializableValue(fieldName, defaultValue, false);
         }
 
         static {

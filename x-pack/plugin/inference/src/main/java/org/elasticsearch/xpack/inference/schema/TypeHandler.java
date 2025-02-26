@@ -8,5 +8,5 @@
 package org.elasticsearch.xpack.inference.schema;
 
 interface TypeHandler extends DynamicallyParseable {
-    SerializableValue<?> newSerializableValue(String persistentStateFieldName, Object value);
+    SerializableValue<?> newSerializableValue(String persistentStateFieldName, Object value, boolean setInCreationRequest);
 }

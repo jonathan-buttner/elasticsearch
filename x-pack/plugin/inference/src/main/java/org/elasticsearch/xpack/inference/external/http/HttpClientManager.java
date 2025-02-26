@@ -149,7 +149,7 @@ public class HttpClientManager implements Closeable {
     private static PoolingNHttpClientConnectionManager createConnectionManager(SSLIOSessionStrategy sslStrategy) {
         ConnectingIOReactor ioReactor;
         try {
-            var configBuilder = IOReactorConfig.custom().setSoKeepAlive(true);
+            var configBuilder = IOReactorConfig.custom().setSoKeepAlive(true).setConnectTimeout();
             ioReactor = new DefaultConnectingIOReactor(configBuilder.build());
         } catch (IOReactorException e) {
             var message = "Failed to initialize HTTP client manager with SSL.";

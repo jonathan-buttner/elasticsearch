@@ -12,10 +12,9 @@ import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.xcontent.ConstructingObjectParser;
 import org.elasticsearch.xcontent.ObjectParser;
 import org.elasticsearch.xcontent.ParseField;
+import org.elasticsearch.xpack.inference.services.ConfigurationParseContext;
 
 import java.io.IOException;
-
-import static org.elasticsearch.xpack.inference.services.ConfigurationParseContext.isRequestContext;
 
 public class IntegerHandler extends BaseTypeHandler<Integer> {
     public IntegerHandler(HandlerConfiguration handlerConfiguration) {
@@ -23,8 +22,8 @@ public class IntegerHandler extends BaseTypeHandler<Integer> {
     }
 
     @Override
-    protected SerializableValue<Integer> newValue(String persistentStateFieldName, Integer value) {
-        return new IntegerValue(persistentStateFieldName, value);
+    protected SerializableValue<Integer> newValue(String persistentStateFieldName, Integer value, boolean setInCreationRequest) {
+        return new IntegerValue(persistentStateFieldName, value, setInCreationRequest);
     }
 
     @Override
@@ -38,8 +37,12 @@ public class IntegerHandler extends BaseTypeHandler<Integer> {
 
     public static class IntegerValue extends SerializableValue<Integer> {
 
-        public IntegerValue(String persistentStateFieldName, Integer value, boolean trackOrigin) {
-            super(persistentStateFieldName, value, trackOrigin);
+        public IntegerValue(String persistentStateFieldName, Integer value, boolean setInCreationRequest) {
+            super(persistentStateFieldName, value, setInCreationRequest);
+        }
+
+        public IntegerValue(String persistentStateFieldName, Integer value, ConfigurationParseContext parseContext) {
+            super(persistentStateFieldName, value, parseContext);
         }
 
         public IntegerValue(StreamInput in) throws IOException {
@@ -61,7 +64,7 @@ public class IntegerHandler extends BaseTypeHandler<Integer> {
     public void declareParserField(ConstructingObjectParser<ParsedValue[], DynamicParser.Context> parser) {
         parser.declareField(
             constructorArgCall,
-            (p, c) -> new IntegerValue(handlerConfiguration.fieldName(), p.intValue(), isRequestContext(c.parseContext())),
+            (p, c) -> new IntegerValue(handlerConfiguration.fieldName(), p.intValue(), c.parseContext()),
             new ParseField(handlerConfiguration.fieldName()),
             ObjectParser.ValueType.INT
         );

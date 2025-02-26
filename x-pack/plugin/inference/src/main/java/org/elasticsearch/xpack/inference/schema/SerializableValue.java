@@ -11,10 +11,13 @@ import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.xcontent.ToXContent;
 import org.elasticsearch.xcontent.XContentBuilder;
+import org.elasticsearch.xpack.inference.services.ConfigurationParseContext;
 import org.elasticsearch.xpack.inference.services.settings.FilteredXContentObject;
 
 import java.io.IOException;
 import java.util.Objects;
+
+import static org.elasticsearch.xpack.inference.services.ConfigurationParseContext.isRequestContext;
 
 public abstract class SerializableValue<T> extends FilteredXContentObject implements ParsedValue {
 
@@ -25,11 +28,21 @@ public abstract class SerializableValue<T> extends FilteredXContentObject implem
     /**
      * @param persistentStateFieldName the field name used to parse the create inference entity request and to persist the values to ES
      * @param value the value parsed from a request or persistent state that needs to be serialized
+     * @param setInCreationRequest specifies when this value was set
      */
     SerializableValue(String persistentStateFieldName, T value, boolean setInCreationRequest) {
         this.persistentStateFieldName = Objects.requireNonNull(persistentStateFieldName);
         this.value = Objects.requireNonNull(value);
         this.setInCreationRequest = setInCreationRequest;
+    }
+
+    /**
+     * @param persistentStateFieldName the field name used to parse the create inference entity request and to persist the values to ES
+     * @param value the value parsed from a request or persistent state that needs to be serialized
+     * @param parseContext specifies when this value was set
+     */
+    SerializableValue(String persistentStateFieldName, T value, ConfigurationParseContext parseContext) {
+        this(persistentStateFieldName, value, isRequestContext(parseContext));
     }
 
     SerializableValue(StreamInput in) throws IOException {
