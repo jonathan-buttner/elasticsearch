@@ -1377,12 +1377,14 @@ public class ElasticInferenceServiceTests extends ESSingleNodeTestCase {
         HttpRequestSender.Factory senderFactory,
         String elasticInferenceServiceURL
     ) {
+        var settings = ElasticInferenceServiceSettingsTests.create(elasticInferenceServiceURL);
+
         return new ElasticInferenceService(
             senderFactory,
             createWithEmptySettings(threadPool),
-            ElasticInferenceServiceSettingsTests.create(elasticInferenceServiceURL),
+            settings,
             modelRegistry,
-            new ElasticInferenceServiceAuthorizationRequestHandler(elasticInferenceServiceURL, threadPool)
+            new ElasticInferenceServiceAuthorizationRequestHandler(settings, threadPool)
         );
     }
 }

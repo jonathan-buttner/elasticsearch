@@ -12,7 +12,6 @@ import org.apache.logging.log4j.Logger;
 import org.elasticsearch.ElasticsearchWrapperException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.common.Strings;
-import org.elasticsearch.core.Nullable;
 import org.elasticsearch.core.TimeValue;
 import org.elasticsearch.inference.InferenceServiceResults;
 import org.elasticsearch.tasks.Task;
@@ -22,6 +21,7 @@ import org.elasticsearch.xpack.inference.external.http.retry.ResponseHandler;
 import org.elasticsearch.xpack.inference.external.http.sender.Sender;
 import org.elasticsearch.xpack.inference.external.request.elastic.ElasticInferenceServiceAuthorizationRequest;
 import org.elasticsearch.xpack.inference.external.response.elastic.ElasticInferenceServiceAuthorizationResponseEntity;
+import org.elasticsearch.xpack.inference.services.elastic.ElasticInferenceServiceSettings;
 import org.elasticsearch.xpack.inference.telemetry.TraceContext;
 
 import java.util.Locale;
@@ -44,25 +44,25 @@ public class ElasticInferenceServiceAuthorizationRequestHandler {
 
     private static ResponseHandler createAuthResponseHandler() {
         return new ElasticInferenceServiceResponseHandler(
-            String.format(Locale.ROOT, "%s sparse embeddings", ELASTIC_INFERENCE_SERVICE_IDENTIFIER),
+            String.format(Locale.ROOT, "%s authorization", ELASTIC_INFERENCE_SERVICE_IDENTIFIER),
             ElasticInferenceServiceAuthorizationResponseEntity::fromResponse
         );
     }
 
-    private final String baseUrl;
+    private final ElasticInferenceServiceSettings settings;
     private final ThreadPool threadPool;
     private final Logger logger;
     private final CountDownLatch requestCompleteLatch = new CountDownLatch(1);
 
-    public ElasticInferenceServiceAuthorizationRequestHandler(@Nullable String baseUrl, ThreadPool threadPool) {
-        this.baseUrl = baseUrl;
+    public ElasticInferenceServiceAuthorizationRequestHandler(ElasticInferenceServiceSettings settings, ThreadPool threadPool) {
+        this.settings = Objects.requireNonNull(settings);
         this.threadPool = Objects.requireNonNull(threadPool);
         logger = LogManager.getLogger(ElasticInferenceServiceAuthorizationRequestHandler.class);
     }
 
     // only use for testing
-    ElasticInferenceServiceAuthorizationRequestHandler(@Nullable String baseUrl, ThreadPool threadPool, Logger logger) {
-        this.baseUrl = baseUrl;
+    ElasticInferenceServiceAuthorizationRequestHandler(ElasticInferenceServiceSettings settings, ThreadPool threadPool, Logger logger) {
+        this.settings = Objects.requireNonNull(settings);
         this.threadPool = Objects.requireNonNull(threadPool);
         this.logger = Objects.requireNonNull(logger);
     }
@@ -75,6 +75,8 @@ public class ElasticInferenceServiceAuthorizationRequestHandler {
     public void getAuthorization(ActionListener<ElasticInferenceServiceAuthorizationModel> listener, Sender sender) {
         try {
             logger.debug("Retrieving authorization information from the Elastic Inference Service.");
+
+            var baseUrl = settings.getElasticInferenceServiceUrl();
 
             if (Strings.isNullOrEmpty(baseUrl)) {
                 logger.debug("The base URL for the authorization service is not valid, rejecting authorization.");

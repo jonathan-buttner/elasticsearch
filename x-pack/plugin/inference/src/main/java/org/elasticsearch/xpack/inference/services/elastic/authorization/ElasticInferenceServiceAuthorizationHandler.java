@@ -126,7 +126,19 @@ public class ElasticInferenceServiceAuthorizationHandler implements Closeable {
 
     public void init() {
         logger.debug("Initializing authorization logic");
+        elasticInferenceServiceSettings.setElasticInferenceServiceUrlCallback(this::elasticInferenceServiceUrlUpdated);
         serviceComponents.threadPool().executor(UTILITY_THREAD_POOL_NAME).execute(this::scheduleAndSendAuthorizationRequest);
+    }
+
+    /**
+     * This is mostly a hack for local development. If the url changes we force an authorization request.
+     */
+    private void elasticInferenceServiceUrlUpdated(String ignored) {
+        if (shutdown.get()) {
+            return;
+        }
+
+        serviceComponents.threadPool().executor(UTILITY_THREAD_POOL_NAME).execute(this::sendAuthorizationRequest);
     }
 
     /**

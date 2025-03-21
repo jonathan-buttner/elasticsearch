@@ -16,6 +16,8 @@ import org.elasticsearch.xpack.core.ssl.SSLConfigurationSettings;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 /**
  * Encapsulates settings using {@link Setting}. This does not represent service settings that are persisted
@@ -30,7 +32,9 @@ public class ElasticInferenceServiceSettings {
 
     static final Setting<String> ELASTIC_INFERENCE_SERVICE_URL = Setting.simpleString(
         "xpack.inference.elastic.url",
-        Setting.Property.NodeScope
+        Setting.Property.NodeScope,
+        // making this dynamic to aid dev teams so they can modify it without having to restart ES
+        Setting.Property.Dynamic
     );
 
     /**
@@ -73,10 +77,11 @@ public class ElasticInferenceServiceSettings {
     @Deprecated
     private final String eisGatewayUrl;
 
-    private final String elasticInferenceServiceUrl;
+    private String elasticInferenceServiceUrl;
     private final boolean periodicAuthorizationEnabled;
     private volatile TimeValue authRequestInterval;
     private volatile TimeValue maxAuthorizationRequestJitter;
+    private AtomicReference<Consumer<String>> eisGatewayUrlCallback = new AtomicReference<>();
 
     public ElasticInferenceServiceSettings(Settings settings) {
         eisGatewayUrl = EIS_GATEWAY_URL.get(settings);
@@ -93,10 +98,22 @@ public class ElasticInferenceServiceSettings {
      * Handles initializing the settings changes listener.
      */
     public final void init(ClusterService clusterService) {
+        clusterService.getClusterSettings().addSettingsUpdateConsumer(ELASTIC_INFERENCE_SERVICE_URL, this::setElasticInferenceServiceUrl);
         clusterService.getClusterSettings()
             .addSettingsUpdateConsumer(AUTHORIZATION_REQUEST_INTERVAL, this::setAuthorizationRequestInterval);
         clusterService.getClusterSettings()
             .addSettingsUpdateConsumer(MAX_AUTHORIZATION_REQUEST_JITTER, this::setMaxAuthorizationRequestJitter);
+    }
+
+    public final void setElasticInferenceServiceUrlCallback(Consumer<String> callback) {
+        eisGatewayUrlCallback.set(callback);
+    }
+
+    private void setElasticInferenceServiceUrl(String url) {
+        elasticInferenceServiceUrl = url;
+        if (eisGatewayUrlCallback.get() != null) {
+            eisGatewayUrlCallback.get().accept(url);
+        }
     }
 
     private void setAuthorizationRequestInterval(TimeValue interval) {

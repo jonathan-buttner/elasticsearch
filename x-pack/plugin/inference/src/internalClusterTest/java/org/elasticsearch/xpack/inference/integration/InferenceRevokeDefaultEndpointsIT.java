@@ -289,13 +289,14 @@ public class InferenceRevokeDefaultEndpointsIT extends ESSingleNodeTestCase {
     private ElasticInferenceService createElasticInferenceService() {
         var httpManager = HttpClientManager.create(Settings.EMPTY, threadPool, mockClusterServiceEmpty(), mock(ThrottlerManager.class));
         var senderFactory = HttpRequestSenderTests.createSenderFactory(threadPool, httpManager);
+        var settings = ElasticInferenceServiceSettingsTests.create(gatewayUrl);
 
         return new ElasticInferenceService(
             senderFactory,
             createWithEmptySettings(threadPool),
-            ElasticInferenceServiceSettingsTests.create(gatewayUrl),
+            settings,
             modelRegistry,
-            new ElasticInferenceServiceAuthorizationRequestHandler(gatewayUrl, threadPool)
+            new ElasticInferenceServiceAuthorizationRequestHandler(settings, threadPool)
         );
     }
 }
