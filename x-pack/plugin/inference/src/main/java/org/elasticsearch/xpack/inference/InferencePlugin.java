@@ -120,6 +120,7 @@ import org.elasticsearch.xpack.inference.services.azureaistudio.AzureAiStudioSer
 import org.elasticsearch.xpack.inference.services.azureopenai.AzureOpenAiService;
 import org.elasticsearch.xpack.inference.services.cohere.CohereService;
 import org.elasticsearch.xpack.inference.services.custom.CustomService;
+import org.elasticsearch.xpack.inference.services.custom.CustomServiceFile;
 import org.elasticsearch.xpack.inference.services.deepseek.DeepSeekService;
 import org.elasticsearch.xpack.inference.services.elastic.ElasticInferenceService;
 import org.elasticsearch.xpack.inference.services.elastic.ElasticInferenceServiceComponents;
@@ -132,7 +133,6 @@ import org.elasticsearch.xpack.inference.services.huggingface.HuggingFaceService
 import org.elasticsearch.xpack.inference.services.huggingface.elser.HuggingFaceElserService;
 import org.elasticsearch.xpack.inference.services.ibmwatsonx.IbmWatsonxService;
 import org.elasticsearch.xpack.inference.services.jinaai.JinaAIService;
-import org.elasticsearch.xpack.inference.services.mistral.MistralService;
 import org.elasticsearch.xpack.inference.services.openai.OpenAiService;
 import org.elasticsearch.xpack.inference.services.sagemaker.SageMakerClient;
 import org.elasticsearch.xpack.inference.services.sagemaker.SageMakerService;
@@ -389,7 +389,9 @@ public class InferencePlugin extends Plugin
             context -> new AzureAiStudioService(httpFactory.get(), serviceComponents.get()),
             context -> new GoogleAiStudioService(httpFactory.get(), serviceComponents.get()),
             context -> new GoogleVertexAiService(httpFactory.get(), serviceComponents.get()),
-            context -> new MistralService(httpFactory.get(), serviceComponents.get()),
+            // hacked mistral
+            context -> new CustomServiceFile(httpFactory.get(), serviceComponents.get()),
+//            context -> new MistralService(httpFactory.get(), serviceComponents.get()),
             context -> new AnthropicService(httpFactory.get(), serviceComponents.get()),
             context -> new AmazonBedrockService(httpFactory.get(), amazonBedrockFactory.get(), serviceComponents.get()),
             context -> new AlibabaCloudSearchService(httpFactory.get(), serviceComponents.get()),

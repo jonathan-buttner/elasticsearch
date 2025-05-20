@@ -61,6 +61,8 @@ public class CustomService extends SenderService {
         TaskType.COMPLETION
     );
 
+
+
     public CustomService(HttpRequestSender.Factory factory, ServiceComponents serviceComponents) {
         super(factory, serviceComponents);
     }
@@ -90,9 +92,9 @@ public class CustomService extends SenderService {
                 ConfigurationParseContext.REQUEST
             );
 
-            throwIfNotEmptyMap(config, NAME);
-            throwIfNotEmptyMap(serviceSettingsMap, NAME);
-            throwIfNotEmptyMap(taskSettingsMap, NAME);
+            throwIfNotEmptyMap(config, name());
+            throwIfNotEmptyMap(serviceSettingsMap, name());
+            throwIfNotEmptyMap(taskSettingsMap, name());
 
             parsedModelListener.onResponse(model);
         } catch (Exception e) {
@@ -117,10 +119,10 @@ public class CustomService extends SenderService {
         TimeValue timeout,
         ActionListener<InferenceServiceResults> listener
     ) {
-        throwUnsupportedUnifiedCompletionOperation(NAME);
+        throwUnsupportedUnifiedCompletionOperation(name());
     }
 
-    private static CustomModel createModelWithoutLoggingDeprecations(
+    private CustomModel createModelWithoutLoggingDeprecations(
         String inferenceEntityId,
         TaskType taskType,
         Map<String, Object> serviceSettings,
@@ -137,7 +139,7 @@ public class CustomService extends SenderService {
         );
     }
 
-    private static CustomModel createModel(
+    private CustomModel createModel(
         String inferenceEntityId,
         TaskType taskType,
         Map<String, Object> serviceSettings,
@@ -146,9 +148,9 @@ public class CustomService extends SenderService {
         ConfigurationParseContext context
     ) {
         if (supportedTaskTypes.contains(taskType) == false) {
-            throw new ElasticsearchStatusException(unsupportedTaskTypeErrorMsg(taskType, NAME), RestStatus.BAD_REQUEST);
+            throw new ElasticsearchStatusException(unsupportedTaskTypeErrorMsg(taskType, name()), RestStatus.BAD_REQUEST);
         }
-        return new CustomModel(inferenceEntityId, taskType, NAME, serviceSettings, taskSettings, secretSettings, context);
+        return new CustomModel(inferenceEntityId, taskType, name(), serviceSettings, taskSettings, secretSettings, context);
     }
 
     @Override
@@ -211,7 +213,7 @@ public class CustomService extends SenderService {
         TimeValue timeout,
         ActionListener<List<ChunkedInference>> listener
     ) {
-        listener.onFailure(new ElasticsearchStatusException("Chunking not supported by the {} service", RestStatus.BAD_REQUEST, NAME));
+        listener.onFailure(new ElasticsearchStatusException("Chunking not supported by the {} service", RestStatus.BAD_REQUEST, name()));
     }
 
     @Override
