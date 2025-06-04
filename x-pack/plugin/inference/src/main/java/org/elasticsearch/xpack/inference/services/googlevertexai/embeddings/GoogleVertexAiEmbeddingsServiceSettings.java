@@ -7,8 +7,10 @@
 
 package org.elasticsearch.xpack.inference.services.googlevertexai.embeddings;
 
+import org.apache.http.client.utils.URIBuilder;
 import org.elasticsearch.TransportVersion;
 import org.elasticsearch.TransportVersions;
+import org.elasticsearch.common.Strings;
 import org.elasticsearch.common.ValidationException;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
@@ -21,13 +23,18 @@ import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xpack.inference.services.ConfigurationParseContext;
 import org.elasticsearch.xpack.inference.services.ServiceUtils;
 import org.elasticsearch.xpack.inference.services.googlevertexai.GoogleVertexAiService;
+import org.elasticsearch.xpack.inference.services.googlevertexai.request.GoogleVertexAiUtils;
 import org.elasticsearch.xpack.inference.services.settings.FilteredXContentObject;
 import org.elasticsearch.xpack.inference.services.settings.RateLimitSettings;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import static org.elasticsearch.core.Strings.format;
 import static org.elasticsearch.xpack.inference.services.ServiceFields.DIMENSIONS;
 import static org.elasticsearch.xpack.inference.services.ServiceFields.MAX_INPUT_TOKENS;
 import static org.elasticsearch.xpack.inference.services.ServiceFields.MODEL_ID;
@@ -41,6 +48,7 @@ import static org.elasticsearch.xpack.inference.services.googlevertexai.GoogleVe
 import static org.elasticsearch.xpack.inference.services.googlevertexai.GoogleVertexAiServiceFields.IS_DEDICATED_ENDPOINT;
 import static org.elasticsearch.xpack.inference.services.googlevertexai.GoogleVertexAiServiceFields.LOCATION;
 import static org.elasticsearch.xpack.inference.services.googlevertexai.GoogleVertexAiServiceFields.PROJECT_ID;
+import static org.elasticsearch.xpack.inference.services.googlevertexai.GoogleVertexAiServiceFields.URL;
 
 public class GoogleVertexAiEmbeddingsServiceSettings extends FilteredXContentObject
     implements
@@ -61,7 +69,7 @@ public class GoogleVertexAiEmbeddingsServiceSettings extends FilteredXContentObj
         String projectId = extractRequiredString(map, PROJECT_ID, ModelConfigurations.SERVICE_SETTINGS, validationException);
         String model = extractOptionalString(map, MODEL_ID, ModelConfigurations.SERVICE_SETTINGS, validationException);
         String endpointId = extractOptionalString(map, ENDPOINT_ID, ModelConfigurations.SERVICE_SETTINGS, validationException);
-        Boolean isDedicatedEndpoint = extractOptionalBoolean(map, IS_DEDICATED_ENDPOINT, validationException);
+        var url = extractOptionalString(map, URL, ModelConfigurations.SERVICE_SETTINGS, validationException);
         Integer maxInputTokens = extractOptionalPositiveInteger(
             map,
             MAX_INPUT_TOKENS,
@@ -122,6 +130,55 @@ public class GoogleVertexAiEmbeddingsServiceSettings extends FilteredXContentObj
             similarityMeasure,
             rateLimitSettings
         );
+    }
+
+    private static final class VertexEndpointBuilder {
+        public static void fromMap(Map<String, Object> map, ValidationException validationException) {
+            String location = extractOptionalString(map, LOCATION, ModelConfigurations.SERVICE_SETTINGS, validationException);
+            String projectId = extractOptionalString(map, PROJECT_ID, ModelConfigurations.SERVICE_SETTINGS, validationException);
+            String modelId = extractOptionalString(map, MODEL_ID, ModelConfigurations.SERVICE_SETTINGS, validationException);
+            var url = extractOptionalString(map, URL, ModelConfigurations.SERVICE_SETTINGS, validationException);
+
+            var urlPartsSet = Strings.isNullOrEmpty(location) == false
+                && Strings.isNullOrEmpty(projectId) == false
+                && Strings.isNullOrEmpty(modelId) == false;
+            var urlFieldSet = Strings.isNullOrEmpty(url) == false;
+
+            if ((urlPartsSet == false && urlFieldSet == false) || (urlPartsSet && urlFieldSet)) {
+                validationException.addValidationError(
+                    Strings.format(
+                        "Either the url must be specified as a absolute url using the [%s] field or it must be specified by its parts "
+                            + "through the [%s] fields. The url takes precedence over the parts.",
+                        URL,
+                        List.of(LOCATION, PROJECT_ID, MODEL_ID)
+                    )
+                );
+            }
+
+            if (validationException.validationErrors().isEmpty() == false) {
+                throw validationException;
+            }
+        }
+    }
+
+    private record VertexEndpoint(URI uri) {
+        public static VertexEndpoint withLocation(String location, String projectId, String modelId) throws URISyntaxException {
+            var uri = new URIBuilder().setScheme("https")
+                .setHost(format("%s%s", location, GoogleVertexAiUtils.GOOGLE_VERTEX_AI_HOST_SUFFIX))
+                .setPathSegments(
+                    GoogleVertexAiUtils.V1,
+                    GoogleVertexAiUtils.PROJECTS,
+                    projectId,
+                    GoogleVertexAiUtils.LOCATIONS,
+                    location,
+                    GoogleVertexAiUtils.PUBLISHERS,
+                    GoogleVertexAiUtils.PUBLISHER_GOOGLE,
+                    GoogleVertexAiUtils.MODELS,
+                    format("%s:%s", modelId, GoogleVertexAiUtils.PREDICT)
+                )
+                .build();
+            return new VertexEndpoint(uri);
+        }
     }
 
     private final String location;

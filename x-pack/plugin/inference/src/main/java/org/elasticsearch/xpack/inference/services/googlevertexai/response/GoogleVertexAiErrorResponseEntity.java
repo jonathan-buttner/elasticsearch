@@ -7,6 +7,7 @@
 
 package org.elasticsearch.xpack.inference.services.googlevertexai.response;
 
+import org.elasticsearch.common.Strings;
 import org.elasticsearch.xcontent.XContentFactory;
 import org.elasticsearch.xcontent.XContentParser;
 import org.elasticsearch.xcontent.XContentParserConfiguration;
@@ -14,6 +15,7 @@ import org.elasticsearch.xcontent.XContentType;
 import org.elasticsearch.xpack.inference.external.http.HttpResult;
 import org.elasticsearch.xpack.inference.external.http.retry.ErrorResponse;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Objects;
 
@@ -64,6 +66,10 @@ public class GoogleVertexAiErrorResponseEntity extends ErrorResponse {
             }
         } catch (Exception e) {
             // swallow the error
+            var rawResponse = new String(response.body(), StandardCharsets.UTF_8);
+            return new GoogleVertexAiErrorResponseEntity(
+                Strings.format("Failed to parse error response: %s, raw response: [%s]", e.getMessage(), rawResponse)
+            );
         }
 
         return ErrorResponse.UNDEFINED_ERROR;

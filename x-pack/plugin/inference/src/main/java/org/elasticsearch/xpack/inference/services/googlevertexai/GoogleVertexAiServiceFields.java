@@ -16,6 +16,7 @@ public class GoogleVertexAiServiceFields {
     public static final String ENDPOINT_ID = "endpoint_id";
 
     public static final String IS_DEDICATED_ENDPOINT = "is_dedicated_endpoint";
+    public static final String URL = "url";
 
     /**
      * In `us-central-1` the max input size is `250`, but in every other region it's `5` according
