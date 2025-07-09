@@ -15,6 +15,7 @@ import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.xpack.core.inference.results.UnifiedChatCompletionException;
 import org.elasticsearch.xpack.inference.external.http.HttpResult;
 import org.elasticsearch.xpack.inference.external.request.Request;
+import org.elasticsearch.xpack.inference.external.response.streaming.StreamingErrorResponse;
 import org.elasticsearch.xpack.inference.logging.ThrottlerManager;
 
 import java.util.Locale;
@@ -140,47 +141,27 @@ public abstract class BaseResponseHandler implements ResponseHandler {
      * @param request            the request that caused the error
      * @param result             the HTTP result containing the error response
      * @param errorResponse      the parsed error response from the HTTP result
-     * @param errorResponseClassSupplier the supplier that provides the class of the expected error response type
-     * @param chatCompletionErrorBuilder the builder for creating provider-specific chat completion errors
      * @return an instance of {@link UnifiedChatCompletionException} with details from the error response
      */
     protected UnifiedChatCompletionException buildChatCompletionError(
         String message,
         Request request,
         HttpResult result,
-        ErrorResponse errorResponse,
-        Supplier<Class<? extends ErrorResponse>> errorResponseClassSupplier,
-        ChatCompletionErrorBuilder chatCompletionErrorBuilder
+        StreamingErrorResponse errorResponse
     ) {
         assert request.isStreaming() : "Only streaming requests support this format";
         var statusCode = result.response().getStatusLine().getStatusCode();
         var errorMessage = extractErrorMessage(message, request, errorResponse, statusCode);
         var restStatus = toRestStatus(statusCode);
 
-        return buildChatCompletionError(errorResponse, errorMessage, restStatus, errorResponseClassSupplier, chatCompletionErrorBuilder);
-    }
-
-    /**
-     * Builds a {@link UnifiedChatCompletionException} for a streaming request.
-     * This method is used when an error response is received from the external service.
-     * Only streaming requests should use this method.
-     *
-     * @param errorResponse      the error response parsed from the HTTP result
-     * @param errorMessage       the error message to include in the exception
-     * @param restStatus         the REST status code of the response
-     * @param errorResponseClassSupplier the supplier that provides the class of the expected error response type
-     * @param chatCompletionErrorBuilder the builder for creating provider-specific chat completion errors
-     * @return an instance of {@link UnifiedChatCompletionException} with details from the error response
-     */
-    protected UnifiedChatCompletionException buildChatCompletionError(
-        ErrorResponse errorResponse,
-        String errorMessage,
-        RestStatus restStatus,
-        Supplier<Class<? extends ErrorResponse>> errorResponseClassSupplier,
-        ChatCompletionErrorBuilder chatCompletionErrorBuilder
-    ) {
-        if (errorResponse.errorStructureFound() && errorResponseClassSupplier.get().isInstance(errorResponse)) {
-            return chatCompletionErrorBuilder.buildProviderSpecificChatCompletionError(errorResponse, errorMessage, restStatus);
+        if (errorResponse.errorStructureFound()) {
+            return new UnifiedChatCompletionException(
+                restStatus,
+                errorMessage,
+                errorResponse.type(),
+                errorResponse.code(),
+                errorResponse.param()
+            );
         } else {
             return buildDefaultChatCompletionError(errorResponse, errorMessage, restStatus);
         }
@@ -196,7 +177,7 @@ public abstract class BaseResponseHandler implements ResponseHandler {
      * @param restStatus    the REST status code of the response
      * @return an instance of {@link UnifiedChatCompletionException} with details from the error response
      */
-    private static UnifiedChatCompletionException buildDefaultChatCompletionError(
+    protected static UnifiedChatCompletionException buildDefaultChatCompletionError(
         ErrorResponse errorResponse,
         String errorMessage,
         RestStatus restStatus

@@ -105,7 +105,7 @@ public class StreamingErrorResponse extends ErrorResponse {
     private final String param;
     private final String type;
 
-    StreamingErrorResponse(String errorMessage, @Nullable String code, @Nullable String param, String type) {
+    protected StreamingErrorResponse(String errorMessage, @Nullable String code, @Nullable String param, String type) {
         super(errorMessage);
         this.code = code;
         this.param = param;

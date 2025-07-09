@@ -24,10 +24,10 @@ import org.elasticsearch.xpack.inference.external.http.retry.ErrorResponse;
 import org.elasticsearch.xpack.inference.external.request.Request;
 import org.elasticsearch.xpack.inference.external.response.streaming.ServerSentEventParser;
 import org.elasticsearch.xpack.inference.external.response.streaming.ServerSentEventProcessor;
+import org.elasticsearch.xpack.inference.external.response.streaming.StreamingErrorResponse;
 import org.elasticsearch.xpack.inference.services.googlevertexai.response.GoogleVertexAiCompletionResponseEntity;
 
 import java.nio.charset.StandardCharsets;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Flow;
 
@@ -71,29 +71,11 @@ public class GoogleVertexAiUnifiedChatCompletionResponseHandler extends GoogleVe
 
     @Override
     protected UnifiedChatCompletionException buildError(String message, Request request, HttpResult result, ErrorResponse errorResponse) {
-        return buildChatCompletionError(
-            message,
-            request,
-            result,
-            errorResponse,
-            () -> GoogleVertexAiErrorResponse.class,
-            GoogleVertexAiUnifiedChatCompletionResponseHandler::buildProviderSpecificChatCompletionError
-        );
-    }
-
-    private static UnifiedChatCompletionException buildProviderSpecificChatCompletionError(
-        ErrorResponse errorResponse,
-        String errorMessage,
-        RestStatus restStatus
-    ) {
-        var vertexAIErrorResponse = (GoogleVertexAiErrorResponse) errorResponse;
-        return new UnifiedChatCompletionException(
-            restStatus,
-            errorMessage,
-            vertexAIErrorResponse.status(),
-            String.valueOf(vertexAIErrorResponse.code()),
-            null
-        );
+        if (errorResponse instanceof StreamingErrorResponse streamingErrorResponse) {
+            return buildChatCompletionError(message, request, result, streamingErrorResponse);
+        } else {
+            return buildDefaultChatCompletionError(errorResponse, message, toRestStatus(result.response().getStatusLine().getStatusCode()));
+        }
     }
 
     private static UnifiedChatCompletionException buildProviderSpecificMidStreamChatCompletionError(
@@ -109,13 +91,13 @@ public class GoogleVertexAiUnifiedChatCompletionResponseHandler extends GoogleVe
                 inferenceEntityId,
                 errorResponse.getErrorMessage()
             ),
-            vertexAIErrorResponse.status(),
-            String.valueOf(vertexAIErrorResponse.code()),
+            vertexAIErrorResponse.type(),
+            vertexAIErrorResponse.code(),
             null
         );
     }
 
-    public static class GoogleVertexAiErrorResponse extends ErrorResponse {
+    public static class GoogleVertexAiErrorResponse extends StreamingErrorResponse {
         private static final ConstructingObjectParser<Optional<ErrorResponse>, Void> ERROR_PARSER = new ConstructingObjectParser<>(
             "google_vertex_ai_error_wrapper",
             true,
@@ -153,7 +135,7 @@ public class GoogleVertexAiUnifiedChatCompletionResponseHandler extends GoogleVe
             }
         }
 
-        static ErrorResponse fromString(String response) {
+        public static ErrorResponse fromString(String response) {
             try (
                 XContentParser parser = XContentFactory.xContent(XContentType.JSON)
                     .createParser(XContentParserConfiguration.EMPTY, response)
@@ -164,23 +146,8 @@ public class GoogleVertexAiUnifiedChatCompletionResponseHandler extends GoogleVe
             }
         }
 
-        private final int code;
-        @Nullable
-        private final String status;
-
         GoogleVertexAiErrorResponse(Integer code, String errorMessage, @Nullable String status) {
-            super(Objects.requireNonNull(errorMessage));
-            this.code = code == null ? 0 : code;
-            this.status = status;
-        }
-
-        public int code() {
-            return code;
-        }
-
-        @Nullable
-        public String status() {
-            return status != null ? status : "google_vertex_ai_error";
+            super(errorMessage, code == null ? "0" : String.valueOf(code), null, status != null ? status : "google_vertex_ai_error");
         }
     }
 }
