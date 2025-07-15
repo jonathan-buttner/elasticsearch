@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-package org.elasticsearch.xpack.inference.external.response.streaming;
+package org.elasticsearch.xpack.inference.services.openai.response;
 
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.rest.RestStatus;

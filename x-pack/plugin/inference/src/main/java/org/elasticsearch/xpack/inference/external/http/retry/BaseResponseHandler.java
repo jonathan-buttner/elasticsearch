@@ -15,6 +15,7 @@ import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.xpack.core.inference.results.UnifiedChatCompletionException;
 import org.elasticsearch.xpack.inference.external.http.HttpResult;
 import org.elasticsearch.xpack.inference.external.request.Request;
+import org.elasticsearch.xpack.inference.external.response.streaming.UnifiedChatCompletionErrorResponse;
 import org.elasticsearch.xpack.inference.logging.ThrottlerManager;
 
 import java.util.Locale;
@@ -102,7 +103,7 @@ public abstract class BaseResponseHandler implements ResponseHandler {
 
     protected abstract void checkForFailureStatusCode(Request request, HttpResult result);
 
-    private void checkForErrorObject(Request request, HttpResult result) {
+    protected void checkForErrorObject(Request request, HttpResult result) {
         var errorEntity = errorParseFunction.apply(result);
 
         if (errorEntity.errorStructureFound()) {
@@ -151,8 +152,14 @@ public abstract class BaseResponseHandler implements ResponseHandler {
         var restStatus = toRestStatus(statusCode);
 
         if (errorResponse.errorStructureFound()
-            && errorResponse instanceof UnifiedChatCompletionExceptionConvertible chatCompletionExceptionConvertible) {
-            return chatCompletionExceptionConvertible.toUnifiedChatCompletionException(errorMessage, restStatus);
+            && errorResponse instanceof UnifiedChatCompletionErrorResponse chatCompletionExceptionConvertible) {
+            return new UnifiedChatCompletionException(
+                restStatus,
+                errorMessage,
+                chatCompletionExceptionConvertible.type(),
+                chatCompletionExceptionConvertible.code(),
+                chatCompletionExceptionConvertible.param()
+            );
         } else {
             return buildDefaultChatCompletionError(errorResponse, errorMessage, restStatus);
         }
@@ -199,9 +206,13 @@ public abstract class BaseResponseHandler implements ResponseHandler {
         Function<String, ErrorResponse> midStreamErrorExtractor
     ) {
         // Extract the error response from the message using the provided method
-        var error = midStreamErrorExtractor.apply(message);
+//        var error = midStreamErrorExtractor.apply(message);
+        var error = errorParseFunction.apply()
         // Check if the error response matches the expected type
         if (error.errorStructureFound() && error instanceof MidStreamUnifiedChatCompletionExceptionConvertible midStreamError) {
+            return new UnifiedChatCompletionException(RestStatus.INTERNAL_SERVER_ERROR, format("%s for request from inference entity id [%s]. Error message: [%s]",
+                SERVER_ERROR_OBJECT,
+                inferenceEntityId, error.getErrorMessage()), )
             // If it matches, we can build a custom mid-stream error exception
             return midStreamError.toUnifiedChatCompletionException(inferenceEntityId);
         } else if (e != null) {
@@ -245,7 +256,7 @@ public abstract class BaseResponseHandler implements ResponseHandler {
         return errorResponse != null ? errorResponse.getClass().getSimpleName() : "unknown";
     }
 
-    protected static String extractErrorMessage(String message, Request request, ErrorResponse errorResponse, int statusCode) {
+    static String extractErrorMessage(String message, Request request, ErrorResponse errorResponse, int statusCode) {
         return (errorResponse == null
             || errorResponse.errorStructureFound() == false
             || Strings.isNullOrEmpty(errorResponse.getErrorMessage()))
